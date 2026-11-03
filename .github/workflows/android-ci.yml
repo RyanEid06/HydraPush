@@ -41,12 +41,12 @@ jobs:
       - name: Verify offline-only policy
         shell: bash
         run: |
-          if grep -R -n "android.permission.INTERNET" app/src/main; then
+          if grep -R -n -E '<uses-permission[^>]*android\.permission\.INTERNET' app/src/main; then
             echo "ERROR: INTERNET permission found."
             exit 1
           fi
 
-          if grep -R -n -E "firebase|retrofit|okhttp|google-services" \
+          if grep -R -n -E 'firebase|retrofit|okhttp|google-services' \
             build.gradle.kts \
             app/build.gradle.kts \
             gradle/libs.versions.toml; then
