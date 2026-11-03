@@ -1,8 +1,6 @@
 package com.hydrapush.tracker.ui.theme
 
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
@@ -51,31 +49,11 @@ private val HydraLight = lightColorScheme(
     onPrimary = Color.White
 )
 
-private val HydraDark = darkColorScheme(
-    primary = HydraColors.Aqua,
-    secondary = HydraColors.LimeBright,
-    tertiary = HydraColors.ProteinCoral,
-    background = Color(0xFF0C1D21),
-    surface = Color(0xFF152A2F),
-    onBackground = Color(0xFFE5F5F7),
-    onSurface = Color(0xFFE5F5F7),
-    onPrimary = Color(0xFF07373B)
-)
 
 @Composable
-fun HydraTheme(
-    themeMode: String = "SYSTEM",
-    content: @Composable () -> Unit
-) {
-    val darkTheme = when (themeMode.uppercase()) {
-        "DARK" -> true
-        "LIGHT" -> false
-        else -> isSystemInDarkTheme()
-    }
-
-    val colors = if (darkTheme) HydraDark else HydraLight
+fun HydraTheme(content: @Composable () -> Unit) {
     MaterialTheme(
-        colorScheme = colors,
+        colorScheme = HydraLight,
         content = content
     )
 }

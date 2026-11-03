@@ -36,6 +36,7 @@ import androidx.core.content.ContextCompat
 import com.hydrapush.tracker.R
 import com.hydrapush.tracker.data.preferences.TrackerSettings
 import com.hydrapush.tracker.data.repository.TrackerRepository
+import com.hydrapush.tracker.reminders.ReminderScheduler
 import com.hydrapush.tracker.ui.components.BrandHeader
 import com.hydrapush.tracker.ui.components.SectionCard
 import com.hydrapush.tracker.ui.theme.HydraColors
@@ -62,14 +63,45 @@ fun SettingsScreen(
     var showAboutDialog by remember { mutableStateOf(false) }
     var pendingImportUri by remember { mutableStateOf<Uri?>(null) }
     var showImportConfirmDialog by remember { mutableStateOf(false) }
+    var pendingReminderEnableTarget by remember { mutableStateOf<String?>(null) }
+    var notificationsAllowed by remember { mutableStateOf(ReminderScheduler.notificationsAllowed(context)) }
 
-    // Android 13+ Notification permission launcher
+    // Android 13+ notification permission. A reminder is persisted as ON only after permission exists.
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { isGranted ->
-        if (!isGranted) {
+        notificationsAllowed = isGranted || ReminderScheduler.notificationsAllowed(context)
+        val target = pendingReminderEnableTarget
+        pendingReminderEnableTarget = null
+        if (notificationsAllowed && target != null) {
+            scope.launch { repo.updateSettings { it.withReminderEnabled(target, true) } }
+        } else if (!notificationsAllowed) {
             scope.launch {
-                snackbarHostState.showSnackbar("Notifications permission was denied. Reminders will not alert.")
+                snackbarHostState.showSnackbar("Notification permission is required to enable reminders.")
+            }
+        }
+    }
+
+    // Keep stored reminder state honest if permission was revoked outside the app.
+    LaunchedEffect(
+        notificationsAllowed,
+        settings.waterReminderEnabled,
+        settings.pushUpReminderEnabled,
+        settings.creatineReminderEnabled,
+        settings.proteinReminderEnabled
+    ) {
+        if (!notificationsAllowed && (
+                settings.waterReminderEnabled || settings.pushUpReminderEnabled ||
+                    settings.creatineReminderEnabled || settings.proteinReminderEnabled
+            )
+        ) {
+            repo.updateSettings {
+                it.copy(
+                    waterReminderEnabled = false,
+                    pushUpReminderEnabled = false,
+                    creatineReminderEnabled = false,
+                    proteinReminderEnabled = false
+                )
             }
         }
     }
@@ -271,7 +303,14 @@ fun SettingsScreen(
                     Switch(
                         checked = settings.creatineEnabled,
                         onCheckedChange = { enabled ->
-                            scope.launch { repo.updateSettings { it.copy(creatineEnabled = enabled) } }
+                            scope.launch {
+                                repo.updateSettings {
+                                    it.copy(
+                                        creatineEnabled = enabled,
+                                        creatineReminderEnabled = if (enabled) it.creatineReminderEnabled else false
+                                    )
+                                }
+                            }
                         },
                         colors = SwitchDefaults.colors(
                             checkedThumbColor = Color.White,
@@ -311,7 +350,14 @@ fun SettingsScreen(
                     Switch(
                         checked = settings.proteinEnabled,
                         onCheckedChange = { enabled ->
-                            scope.launch { repo.updateSettings { it.copy(proteinEnabled = enabled) } }
+                            scope.launch {
+                                repo.updateSettings {
+                                    it.copy(
+                                        proteinEnabled = enabled,
+                                        proteinReminderEnabled = if (enabled) it.proteinReminderEnabled else false
+                                    )
+                                }
+                            }
                         },
                         colors = SwitchDefaults.colors(
                             checkedThumbColor = Color.White,
@@ -333,13 +379,20 @@ fun SettingsScreen(
                 ReminderRow(
                     iconRes = R.drawable.water_icon,
                     title = "Water Reminder",
-                    subtitle = "Every ${settings.waterReminderIntervalHours} hours",
-                    enabled = settings.waterReminderEnabled,
+                    subtitle = if (notificationsAllowed) "Every ${settings.waterReminderIntervalHours} hours" else "Permission required",
+                    enabled = settings.waterReminderEnabled && notificationsAllowed,
                     onToggle = { isEnabled ->
-                        if (isEnabled) {
-                            checkPermissionAndLaunch(context, notificationPermissionLauncher)
-                        }
-                        scope.launch { repo.updateSettings { it.copy(waterReminderEnabled = isEnabled) } }
+                        handleReminderToggle(
+                            target = "water",
+                            enable = isEnabled,
+                            context = context,
+                            launcher = notificationPermissionLauncher,
+                            permissionAlreadyGranted = notificationsAllowed,
+                            onPermissionRequest = { pendingReminderEnableTarget = it },
+                            onPersist = { target, enabled ->
+                                scope.launch { repo.updateSettings { it.withReminderEnabled(target, enabled) } }
+                            }
+                        )
                     },
                     onClickSchedule = {
                         customHour = settings.waterReminderIntervalHours
@@ -353,13 +406,18 @@ fun SettingsScreen(
                 ReminderRow(
                     iconRes = R.drawable.pushup_icon,
                     title = "Push-up Reminder",
-                    subtitle = formatMinutesToTime(settings.pushUpReminderTimeMinutes),
-                    enabled = settings.pushUpReminderEnabled,
+                    subtitle = if (notificationsAllowed) formatMinutesToTime(settings.pushUpReminderTimeMinutes) else "Permission required",
+                    enabled = settings.pushUpReminderEnabled && notificationsAllowed,
                     onToggle = { isEnabled ->
-                        if (isEnabled) {
-                            checkPermissionAndLaunch(context, notificationPermissionLauncher)
-                        }
-                        scope.launch { repo.updateSettings { it.copy(pushUpReminderEnabled = isEnabled) } }
+                        handleReminderToggle(
+                            target = "pushup", enable = isEnabled, context = context,
+                            launcher = notificationPermissionLauncher,
+                            permissionAlreadyGranted = notificationsAllowed,
+                            onPermissionRequest = { pendingReminderEnableTarget = it },
+                            onPersist = { target, enabled ->
+                                scope.launch { repo.updateSettings { it.withReminderEnabled(target, enabled) } }
+                            }
+                        )
                     },
                     onClickSchedule = {
                         customHour = settings.pushUpReminderTimeMinutes / 60
@@ -374,14 +432,23 @@ fun SettingsScreen(
                 ReminderRow(
                     iconRes = R.drawable.creatine_icon,
                     title = "Creatine Reminder",
-                    subtitle = if (!settings.creatineEnabled) "Habit deactivated" else formatMinutesToTime(settings.creatineReminderTimeMinutes),
-                    enabled = settings.creatineEnabled && settings.creatineReminderEnabled,
+                    subtitle = when {
+                        !settings.creatineEnabled -> "Habit deactivated"
+                        !notificationsAllowed -> "Permission required"
+                        else -> formatMinutesToTime(settings.creatineReminderTimeMinutes)
+                    },
+                    enabled = settings.creatineEnabled && settings.creatineReminderEnabled && notificationsAllowed,
                     isHabitActive = settings.creatineEnabled,
                     onToggle = { isEnabled ->
-                        if (isEnabled) {
-                            checkPermissionAndLaunch(context, notificationPermissionLauncher)
-                        }
-                        scope.launch { repo.updateSettings { it.copy(creatineReminderEnabled = isEnabled) } }
+                        handleReminderToggle(
+                            target = "creatine", enable = isEnabled, context = context,
+                            launcher = notificationPermissionLauncher,
+                            permissionAlreadyGranted = notificationsAllowed,
+                            onPermissionRequest = { pendingReminderEnableTarget = it },
+                            onPersist = { target, enabled ->
+                                scope.launch { repo.updateSettings { it.withReminderEnabled(target, enabled) } }
+                            }
+                        )
                     },
                     onClickSchedule = {
                         if (settings.creatineEnabled) {
@@ -398,14 +465,23 @@ fun SettingsScreen(
                 ReminderRow(
                     iconRes = R.drawable.protein_icon,
                     title = "Protein Shake Reminder",
-                    subtitle = if (!settings.proteinEnabled) "Habit deactivated" else formatMinutesToTime(settings.proteinReminderTimeMinutes),
-                    enabled = settings.proteinEnabled && settings.proteinReminderEnabled,
+                    subtitle = when {
+                        !settings.proteinEnabled -> "Habit deactivated"
+                        !notificationsAllowed -> "Permission required"
+                        else -> formatMinutesToTime(settings.proteinReminderTimeMinutes)
+                    },
+                    enabled = settings.proteinEnabled && settings.proteinReminderEnabled && notificationsAllowed,
                     isHabitActive = settings.proteinEnabled,
                     onToggle = { isEnabled ->
-                        if (isEnabled) {
-                            checkPermissionAndLaunch(context, notificationPermissionLauncher)
-                        }
-                        scope.launch { repo.updateSettings { it.copy(proteinReminderEnabled = isEnabled) } }
+                        handleReminderToggle(
+                            target = "protein", enable = isEnabled, context = context,
+                            launcher = notificationPermissionLauncher,
+                            permissionAlreadyGranted = notificationsAllowed,
+                            onPermissionRequest = { pendingReminderEnableTarget = it },
+                            onPersist = { target, enabled ->
+                                scope.launch { repo.updateSettings { it.withReminderEnabled(target, enabled) } }
+                            }
+                        )
                     },
                     onClickSchedule = {
                         if (settings.proteinEnabled) {
@@ -960,17 +1036,35 @@ private fun formatMinutesToTime(minutesSinceMidnight: Int): String {
     return "%d:%02d %s".format(h12, m, amPm)
 }
 
-private fun checkPermissionAndLaunch(
+private fun TrackerSettings.withReminderEnabled(target: String, enabled: Boolean): TrackerSettings = when (target) {
+    "water" -> copy(waterReminderEnabled = enabled)
+    "pushup" -> copy(pushUpReminderEnabled = enabled)
+    "creatine" -> copy(creatineReminderEnabled = enabled)
+    "protein" -> copy(proteinReminderEnabled = enabled)
+    else -> this
+}
+
+private fun handleReminderToggle(
+    target: String,
+    enable: Boolean,
     context: Context,
-    launcher: androidx.activity.result.ActivityResultLauncher<String>
+    launcher: androidx.activity.result.ActivityResultLauncher<String>,
+    permissionAlreadyGranted: Boolean,
+    onPermissionRequest: (String) -> Unit,
+    onPersist: (String, Boolean) -> Unit
 ) {
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        if (ContextCompat.checkSelfPermission(
-                context,
-                Manifest.permission.POST_NOTIFICATIONS
-            ) != PackageManager.PERMISSION_GRANTED
-        ) {
-            launcher.launch(Manifest.permission.POST_NOTIFICATIONS)
-        }
+    if (!enable) {
+        onPersist(target, false)
+        return
     }
+    if (permissionAlreadyGranted || Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+        onPersist(target, true)
+        return
+    }
+    if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
+        onPersist(target, true)
+        return
+    }
+    onPermissionRequest(target)
+    launcher.launch(Manifest.permission.POST_NOTIFICATIONS)
 }

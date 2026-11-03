@@ -7,5 +7,4 @@
         <item name="android:navigationBarColor">#F5FCFD</item>
         <item name="android:windowLightNavigationBar">true</item>
     </style>
-    <style name="Theme.MyApplication" parent="Theme.HydraPush" />
 </resources>

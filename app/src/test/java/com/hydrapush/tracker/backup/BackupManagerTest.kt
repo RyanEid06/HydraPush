@@ -73,6 +73,16 @@ class BackupManagerTest {
         assertEquals(20 * 60 + 45, restored.settings.proteinReminderTimeMinutes)
     }
 
+    @Test
+    fun defaultV1SettingsAreLightAndRemindersOptIn() {
+        val defaults = TrackerSettings()
+        assertEquals("LIGHT", defaults.themeMode)
+        assertFalse(defaults.waterReminderEnabled)
+        assertFalse(defaults.pushUpReminderEnabled)
+        assertFalse(defaults.creatineReminderEnabled)
+        assertFalse(defaults.proteinReminderEnabled)
+    }
+
     @Test(expected = IllegalArgumentException::class)
     fun tamperedBackupThrowsException() {
         val snapshots = listOf(DailySnapshotEntity("2026-11-01", 2500, 100, true, true))
@@ -100,6 +110,19 @@ class BackupManagerTest {
         )
         val json = BackupManager.createBackupJson(
             snapshots, emptyList(), emptyList(), emptyList(), emptyList(), TrackerSettings()
+        )
+        BackupManager.parseAndValidate(json)
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun orphanWaterEntryThrowsException() {
+        val json = BackupManager.createBackupJson(
+            snapshots = listOf(DailySnapshotEntity("2026-11-01", 2500, 100, true, true)),
+            water = listOf(WaterEntryEntity(1, "2026-11-02", 500, 1000L)),
+            pushups = emptyList(),
+            revisions = emptyList(),
+            achievements = emptyList(),
+            settings = TrackerSettings()
         )
         BackupManager.parseAndValidate(json)
     }

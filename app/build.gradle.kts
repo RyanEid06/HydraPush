@@ -18,21 +18,18 @@ android {
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
 
-  // Do not remove or modify these signingConfigs. They are necessary for building, installing,
-  // and updating Android apps in AI Studio.
+  val releaseSigningConfigured = listOf(
+    "KEYSTORE_PATH", "STORE_PASSWORD", "KEY_ALIAS", "KEY_PASSWORD"
+  ).all { !System.getenv(it).isNullOrBlank() }
+
   signingConfigs {
-    create("release") {
-      val keystorePath = System.getenv("KEYSTORE_PATH") ?: "${rootDir}/my-upload-key.jks"
-      storeFile = file(keystorePath)
-      storePassword = System.getenv("STORE_PASSWORD")
-      keyAlias = "upload"
-      keyPassword = System.getenv("KEY_PASSWORD")
-    }
-    create("debugConfig") {
-      storeFile = file("${rootDir}/debug.keystore")
-      storePassword = "android"
-      keyAlias = "androiddebugkey"
-      keyPassword = "android"
+    if (releaseSigningConfigured) {
+      create("release") {
+        storeFile = file(System.getenv("KEYSTORE_PATH"))
+        storePassword = System.getenv("STORE_PASSWORD")
+        keyAlias = System.getenv("KEY_ALIAS")
+        keyPassword = System.getenv("KEY_PASSWORD")
+      }
     }
   }
 
@@ -41,15 +38,12 @@ android {
       isCrunchPngs = false
       isMinifyEnabled = false
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-      // Do not remove or modify this signingConfig assignment. It is necessary for Android apps in
-      // AI Studio.
-      signingConfig = signingConfigs.getByName("release")
+      if (releaseSigningConfigured) {
+        signingConfig = signingConfigs.getByName("release")
+      }
     }
-    debug {
-      // Do not remove or modify this signingConfig assignment. It is necessary for Android apps in
-      // AI Studio.
-      signingConfig = signingConfigs.getByName("debugConfig")
-    }
+    // Debug uses Android's standard auto-generated debug keystore.
+    debug { }
   }
   compileOptions {
     sourceCompatibility = JavaVersion.VERSION_17
@@ -57,7 +51,6 @@ android {
   }
   buildFeatures {
     compose = true
-    buildConfig = true
   }
   testOptions { unitTests { isIncludeAndroidResources = true } }
   dependenciesInfo {

@@ -35,7 +35,7 @@
             android:id="@+id/widget_streak"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="🔥 0-day"
+            android:text="0-day streak"
             android:textColor="#FF7D4A"
             android:textStyle="bold"
             android:textSize="12sp" />
@@ -67,7 +67,7 @@
                 android:id="@+id/widget_water_text"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="💧 0 / 2500 ml"
+                android:text="0 / 2500 ml"
                 android:textColor="#0CC5BB"
                 android:textStyle="bold"
                 android:textSize="12sp" />
@@ -75,7 +75,7 @@
             <Button
                 android:id="@+id/widget_water_btn"
                 android:layout_width="wrap_content"
-                android:layout_height="36dp"
+                android:layout_height="48dp"
                 android:layout_marginTop="4dp"
                 android:text="+250 ml"
                 android:textSize="11sp"
@@ -95,7 +95,7 @@
                 android:id="@+id/widget_pushup_text"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="↗ 0 / 100 reps"
+                android:text="0 / 100 reps"
                 android:textColor="#8BD70F"
                 android:textStyle="bold"
                 android:textSize="12sp" />
@@ -103,7 +103,7 @@
             <Button
                 android:id="@+id/widget_pushup_btn"
                 android:layout_width="wrap_content"
-                android:layout_height="36dp"
+                android:layout_height="48dp"
                 android:layout_marginTop="4dp"
                 android:text="+10 reps"
                 android:textSize="11sp"

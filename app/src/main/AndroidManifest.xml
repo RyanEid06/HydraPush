@@ -28,7 +28,7 @@
 
         <receiver
             android:name="com.hydrapush.tracker.reminders.BootCompletedReceiver"
-            android:exported="true">
+            android:exported="false">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.TIMEZONE_CHANGED" />
@@ -38,7 +38,7 @@
 
         <receiver
             android:name="com.hydrapush.tracker.widget.HydraPushAppWidgetProvider"
-            android:exported="true">
+            android:exported="false">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
                 <action android:name="com.hydrapush.tracker.ACTION_LOG_WATER_QUICK" />

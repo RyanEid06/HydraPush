@@ -1,5 +1,0 @@
-I did a final audit against the locked HydraPush V1 spec and the 95%+ visual-fidelity target. Extract this patch kit and read `GEMINI_FIX_PASS.md` first, then `ART_INTEGRATION.md`.
-
-Do not redesign HydraPush and do not change `com.hydrapush.tracker`. Treat every P0 item as mandatory before you call the build healthy. Then do the P1 correctness + visual pass, integrate/recreate the supplied small art assets where useful, build/test the real APK, and provide screenshots/evidence rather than claiming success from source inspection.
-
-The biggest non-negotiables are: remove all Firebase/Gemini/network template baggage, prove there is no INTERNET permission in the merged APK, complete the Gradle wrapper/signing setup, fix backup reminder round-trip + atomic validation, make reminders actually obey configured schedules, fix receiver/widget coroutine lifetime, draw historical per-day goals correctly, and replace emoji-heavy branding with the approved HydraPush visual assets/vectors.

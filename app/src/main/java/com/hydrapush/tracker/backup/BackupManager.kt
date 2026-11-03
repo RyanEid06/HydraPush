@@ -120,7 +120,7 @@ object BackupManager {
         setObj.put("pushUpGoalReps", settings.pushUpGoalReps)
         setObj.put("creatineEnabled", settings.creatineEnabled)
         setObj.put("proteinEnabled", settings.proteinEnabled)
-        setObj.put("themeMode", settings.themeMode)
+        setObj.put("themeMode", "LIGHT")
         // Complete reminder settings
         setObj.put("waterReminderEnabled", settings.waterReminderEnabled)
         setObj.put("waterReminderIntervalHours", settings.waterReminderIntervalHours)
@@ -206,6 +206,7 @@ object BackupManager {
         for (i in 0 until waterArr.length()) {
             val o = waterArr.getJSONObject(i)
             val id = o.optLong("id", 0)
+            require(id >= 0) { "Water entry id must not be negative: $id" }
             if (id > 0) {
                 require(seenWaterIds.add(id)) { "Duplicate water entry id: $id" }
             }
@@ -231,6 +232,7 @@ object BackupManager {
         for (i in 0 until pushArr.length()) {
             val o = pushArr.getJSONObject(i)
             val id = o.optLong("id", 0)
+            require(id >= 0) { "Push-up set id must not be negative: $id" }
             if (id > 0) {
                 require(seenPushupIds.add(id)) { "Duplicate pushup set id: $id" }
             }
@@ -257,6 +259,7 @@ object BackupManager {
             for (i in 0 until revArr.length()) {
                 val o = revArr.getJSONObject(i)
                 val id = o.optLong("id", 0)
+                require(id >= 0) { "Revision id must not be negative: $id" }
                 if (id > 0) {
                     require(seenRevIds.add(id)) { "Duplicate revision id: $id" }
                 }
@@ -304,6 +307,12 @@ object BackupManager {
             }
         }
 
+        // Cross-table integrity: activity and achievement rows must belong to a known day.
+        val snapshotDays = snapshots.mapTo(mutableSetOf()) { it.day }
+        require(water.all { it.day in snapshotDays }) { "Backup contains water entries without a matching day snapshot" }
+        require(pushups.all { it.day in snapshotDays }) { "Backup contains push-up sets without a matching day snapshot" }
+        require(achievements.all { it.sourceDay in snapshotDays }) { "Backup contains achievements with an unknown source day" }
+
         // Validate settings
         val setObj = root.optJSONObject("settings")
         val waterGoal = setObj?.optInt("waterGoalMl", 2500) ?: 2500
@@ -323,22 +332,23 @@ object BackupManager {
         val proteinTime = setObj?.optInt("proteinReminderTimeMinutes", 19 * 60) ?: (19 * 60)
         require(proteinTime in 0..1439) { "Settings proteinReminderTimeMinutes out of range: $proteinTime" }
 
-        val theme = setObj?.optString("themeMode", "SYSTEM") ?: "SYSTEM"
-        require(theme in listOf("SYSTEM", "LIGHT", "DARK")) { "Invalid themeMode: $theme" }
+        // Theme is intentionally light-only in V1. Accept legacy values but normalize on restore.
+        val legacyTheme = setObj?.optString("themeMode", "LIGHT") ?: "LIGHT"
+        require(legacyTheme in listOf("SYSTEM", "LIGHT", "DARK")) { "Invalid themeMode: $legacyTheme" }
 
         val settings = TrackerSettings(
             waterGoalMl = waterGoal,
             pushUpGoalReps = pushGoal,
             creatineEnabled = setObj?.optBoolean("creatineEnabled", true) ?: true,
             proteinEnabled = setObj?.optBoolean("proteinEnabled", true) ?: true,
-            themeMode = theme,
-            waterReminderEnabled = setObj?.optBoolean("waterReminderEnabled", true) ?: true,
+            themeMode = "LIGHT",
+            waterReminderEnabled = setObj?.optBoolean("waterReminderEnabled", false) ?: false,
             waterReminderIntervalHours = waterInterval,
-            pushUpReminderEnabled = setObj?.optBoolean("pushUpReminderEnabled", true) ?: true,
+            pushUpReminderEnabled = setObj?.optBoolean("pushUpReminderEnabled", false) ?: false,
             pushUpReminderTimeMinutes = pushTime,
-            creatineReminderEnabled = setObj?.optBoolean("creatineReminderEnabled", true) ?: true,
+            creatineReminderEnabled = setObj?.optBoolean("creatineReminderEnabled", false) ?: false,
             creatineReminderTimeMinutes = creatineTime,
-            proteinReminderEnabled = setObj?.optBoolean("proteinReminderEnabled", true) ?: true,
+            proteinReminderEnabled = setObj?.optBoolean("proteinReminderEnabled", false) ?: false,
             proteinReminderTimeMinutes = proteinTime
         )
 

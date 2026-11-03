@@ -16,14 +16,14 @@ data class TrackerSettings(
     val pushUpGoalReps: Int = 100,
     val creatineEnabled: Boolean = true,
     val proteinEnabled: Boolean = true,
-    val themeMode: String = "SYSTEM", // "SYSTEM", "LIGHT", "DARK"
-    val waterReminderEnabled: Boolean = true,
+    val themeMode: String = "LIGHT", // V1 is intentionally light-only; retained for backup compatibility
+    val waterReminderEnabled: Boolean = false,
     val waterReminderIntervalHours: Int = 2,
-    val pushUpReminderEnabled: Boolean = true,
+    val pushUpReminderEnabled: Boolean = false,
     val pushUpReminderTimeMinutes: Int = 18 * 60, // 6:00 PM
-    val creatineReminderEnabled: Boolean = true,
+    val creatineReminderEnabled: Boolean = false,
     val creatineReminderTimeMinutes: Int = 9 * 60, // 9:00 AM
-    val proteinReminderEnabled: Boolean = true,
+    val proteinReminderEnabled: Boolean = false,
     val proteinReminderTimeMinutes: Int = 19 * 60 // 7:00 PM
 )
 
@@ -50,14 +50,14 @@ class TrackerSettingsStore(private val context: Context) {
             pushUpGoalReps = p[Keys.PUSH_GOAL] ?: 100,
             creatineEnabled = p[Keys.CREATINE] ?: true,
             proteinEnabled = p[Keys.PROTEIN] ?: true,
-            themeMode = p[Keys.THEME_MODE] ?: "SYSTEM",
-            waterReminderEnabled = p[Keys.WATER_REMINDER] ?: true,
+            themeMode = "LIGHT",
+            waterReminderEnabled = p[Keys.WATER_REMINDER] ?: false,
             waterReminderIntervalHours = p[Keys.WATER_INTERVAL] ?: 2,
-            pushUpReminderEnabled = p[Keys.PUSHUP_REMINDER] ?: true,
+            pushUpReminderEnabled = p[Keys.PUSHUP_REMINDER] ?: false,
             pushUpReminderTimeMinutes = p[Keys.PUSHUP_TIME] ?: (18 * 60),
-            creatineReminderEnabled = p[Keys.CREATINE_REMINDER] ?: true,
+            creatineReminderEnabled = p[Keys.CREATINE_REMINDER] ?: false,
             creatineReminderTimeMinutes = p[Keys.CREATINE_TIME] ?: (9 * 60),
-            proteinReminderEnabled = p[Keys.PROTEIN_REMINDER] ?: true,
+            proteinReminderEnabled = p[Keys.PROTEIN_REMINDER] ?: false,
             proteinReminderTimeMinutes = p[Keys.PROTEIN_TIME] ?: (19 * 60)
         )
     }
@@ -71,7 +71,7 @@ class TrackerSettingsStore(private val context: Context) {
             p[Keys.PUSH_GOAL] = next.pushUpGoalReps
             p[Keys.CREATINE] = next.creatineEnabled
             p[Keys.PROTEIN] = next.proteinEnabled
-            p[Keys.THEME_MODE] = next.themeMode
+            p[Keys.THEME_MODE] = "LIGHT"
             p[Keys.WATER_REMINDER] = next.waterReminderEnabled
             p[Keys.WATER_INTERVAL] = next.waterReminderIntervalHours
             p[Keys.PUSHUP_REMINDER] = next.pushUpReminderEnabled

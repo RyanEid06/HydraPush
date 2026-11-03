@@ -1,5 +1,6 @@
 package com.hydrapush.tracker.reminders
 
+import android.Manifest
 import android.app.AlarmManager
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -7,8 +8,10 @@ import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import com.hydrapush.tracker.MainActivity
 import com.hydrapush.tracker.R
 import com.hydrapush.tracker.data.preferences.TrackerSettings
@@ -59,9 +62,22 @@ object ReminderScheduler {
         }
     }
 
+    fun notificationsAllowed(context: Context): Boolean =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) ==
+            PackageManager.PERMISSION_GRANTED
+
     fun scheduleAll(context: Context, settings: TrackerSettings) {
         createNotificationChannels(context)
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+
+        // Never keep wake-up alarms active when Android cannot show their notifications.
+        if (!notificationsAllowed(context)) {
+            listOf(ID_WATER, ID_PUSHUP, ID_CREATINE, ID_PROTEIN).forEach {
+                cancel(context, alarmManager, it)
+            }
+            return
+        }
 
         // Water reminder with configured interval (e.g. every N hours)
         if (settings.waterReminderEnabled) {
@@ -256,6 +272,7 @@ class ReminderNotificationReceiver : BroadcastReceiver() {
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .build()
 
+        if (!ReminderScheduler.notificationsAllowed(context)) return
         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         nm.notify(id, notification)
     }

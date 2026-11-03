@@ -52,7 +52,7 @@ fun HydraPushApp(context: Context) {
         }
     }
 
-    HydraTheme(themeMode = settings.themeMode) {
+    HydraTheme {
         Scaffold(
             containerColor = HydraColors.Background,
             contentWindowInsets = WindowInsets.systemBars,

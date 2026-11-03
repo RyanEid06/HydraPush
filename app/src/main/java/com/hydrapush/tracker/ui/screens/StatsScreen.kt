@@ -1193,7 +1193,7 @@ private fun CalendarHistoryView(
                 Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.SpaceAround) {
                     for (col in 1..7) {
                         if (rowStart == 1 && col < firstDayOfWeek || dayNumber > daysInMonth) {
-                            Spacer(modifier = Modifier.width(36.dp))
+                            Spacer(modifier = Modifier.width(48.dp))
                         } else {
                             val thisDate = currentMonth.atDay(dayNumber)
                             val dayStr = thisDate.toString()
@@ -1210,24 +1210,30 @@ private fun CalendarHistoryView(
 
                             Box(
                                 modifier = Modifier
-                                    .size(36.dp)
-                                    .background(bgColor, CircleShape)
-                                    .border(
-                                        width = if (isToday) 2.dp else 0.dp,
-                                        color = if (isToday) HydraColors.PrimaryTeal else Color.Transparent,
-                                        shape = CircleShape
-                                    )
-                                    .clickable {
-                                        if (dayView != null) onSelectDay(dayView)
+                                    .size(48.dp)
+                                    .clickable(enabled = dayView != null) {
+                                        dayView?.let(onSelectDay)
                                     },
                                 contentAlignment = Alignment.Center
                             ) {
-                                Text(
-                                    text = "$dayNumber",
-                                    fontSize = 12.sp,
-                                    fontWeight = if (isToday || isPerfect) FontWeight.Bold else FontWeight.Normal,
-                                    color = HydraColors.Navy
-                                )
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .background(bgColor, CircleShape)
+                                        .border(
+                                            width = if (isToday) 2.dp else 0.dp,
+                                            color = if (isToday) HydraColors.PrimaryTeal else Color.Transparent,
+                                            shape = CircleShape
+                                        ),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = "$dayNumber",
+                                        fontSize = 12.sp,
+                                        fontWeight = if (isToday || isPerfect) FontWeight.Bold else FontWeight.Normal,
+                                        color = HydraColors.Navy
+                                    )
+                                }
                             }
                             dayNumber++
                         }

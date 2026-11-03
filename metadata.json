@@ -1,6 +1,0 @@
-{
-  "name": "HydraPush",
-  "description": "Offline-first daily water intake and push-up tracker with streaks, statistics, and customizable habits.",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}

@@ -18,7 +18,6 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.LocalFireDepartment
-import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -101,20 +100,16 @@ fun DashboardScreen(
                         modifier = Modifier.weight(1f),
                         waterMl = metrics.waterMl,
                         goalMl = metrics.waterGoalMl,
-                        hasEntries = today.waters.isNotEmpty(),
                         onAddQuick = { amount ->
                             scope.launch {
-                                repository.addWater(amount)
+                                val entryId = repository.addWater(amount)
                                 val result = snackbarHostState.showSnackbar(
                                     message = "Added $amount ml water",
                                     actionLabel = "Undo",
                                     duration = SnackbarDuration.Short
                                 )
                                 if (result == SnackbarResult.ActionPerformed) {
-                                    val lastEntry = today.waters.lastOrNull()
-                                    if (lastEntry != null) {
-                                        repository.undoWater(lastEntry.id)
-                                    }
+                                    repository.undoWater(entryId)
                                 }
                             }
                         },
@@ -122,11 +117,6 @@ fun DashboardScreen(
                             inputAmount = ""
                             dialogError = null
                             showWaterDialog = true
-                        },
-                        onUndoClick = {
-                            today.waters.lastOrNull()?.let { last ->
-                                scope.launch { repository.undoWater(last.id) }
-                            }
                         }
                     )
 
@@ -136,16 +126,10 @@ fun DashboardScreen(
                         reps = metrics.pushUpReps,
                         goalReps = metrics.pushUpGoalReps,
                         sets = today.sets.map { it.reps },
-                        hasSets = today.sets.isNotEmpty(),
                         onAddSetClick = {
                             inputAmount = ""
                             dialogError = null
                             showPushUpDialog = true
-                        },
-                        onUndoClick = {
-                            today.sets.lastOrNull()?.let { last ->
-                                scope.launch { repository.removeSet(last.id) }
-                            }
                         }
                     )
                 }
@@ -386,8 +370,13 @@ fun DashboardScreen(
                             dialogError = "Enter an amount between 1 and 5,000 ml"
                         } else {
                             scope.launch {
-                                repository.addWater(amount)
-                                snackbarHostState.showSnackbar("Added $amount ml water")
+                                val entryId = repository.addWater(amount)
+                                val result = snackbarHostState.showSnackbar(
+                                    message = "Added $amount ml water",
+                                    actionLabel = "Undo",
+                                    duration = SnackbarDuration.Short
+                                )
+                                if (result == SnackbarResult.ActionPerformed) repository.undoWater(entryId)
                             }
                             showWaterDialog = false
                         }
@@ -468,8 +457,13 @@ fun DashboardScreen(
                             dialogError = "Enter reps between 1 and 1,000"
                         } else {
                             scope.launch {
-                                repository.addSet(reps)
-                                snackbarHostState.showSnackbar("Added $reps reps")
+                                val setId = repository.addSet(reps)
+                                val result = snackbarHostState.showSnackbar(
+                                    message = "Added $reps reps",
+                                    actionLabel = "Undo",
+                                    duration = SnackbarDuration.Short
+                                )
+                                if (result == SnackbarResult.ActionPerformed) repository.removeSet(setId)
                             }
                             showPushUpDialog = false
                         }
@@ -497,10 +491,8 @@ private fun WaterCard(
     modifier: Modifier = Modifier,
     waterMl: Int,
     goalMl: Int,
-    hasEntries: Boolean,
     onAddQuick: (Int) -> Unit,
-    onCustomClick: () -> Unit,
-    onUndoClick: () -> Unit
+    onCustomClick: () -> Unit
 ) {
     Card(
         modifier = modifier
@@ -689,39 +681,10 @@ private fun WaterCard(
                         fontWeight = FontWeight.Medium
                     )
                 }
-
-                // Subdued undo link with fixed reserve height to prevent card height jitter
-                Box(
-                    modifier = Modifier
-                        .height(32.dp)
-                        .fillMaxWidth(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    if (hasEntries) {
-                        TextButton(
-                            onClick = onUndoClick,
-                            modifier = Modifier.testTag("undo_water_button"),
-                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Undo,
-                                contentDescription = "Undo",
-                                tint = HydraColors.Muted,
-                                modifier = Modifier.size(12.dp)
-                            )
-                            Spacer(modifier = Modifier.width(3.dp))
-                            Text(
-                                text = "Undo last",
-                                fontSize = 11.sp,
-                                color = HydraColors.Muted
-                            )
-                        }
-                    }
                 }
             }
         }
     }
-}
 
 @Composable
 private fun PushUpCard(
@@ -729,9 +692,7 @@ private fun PushUpCard(
     reps: Int,
     goalReps: Int,
     sets: List<Int>,
-    hasSets: Boolean,
-    onAddSetClick: () -> Unit,
-    onUndoClick: () -> Unit
+    onAddSetClick: () -> Unit
 ) {
     Card(
         modifier = modifier
@@ -879,39 +840,10 @@ private fun PushUpCard(
                         fontWeight = FontWeight.Bold
                     )
                 }
-
-                // Subdued undo link with fixed reserve height to prevent card height jitter
-                Box(
-                    modifier = Modifier
-                        .height(32.dp)
-                        .fillMaxWidth(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    if (hasSets) {
-                        TextButton(
-                            onClick = onUndoClick,
-                            modifier = Modifier.testTag("undo_set_button"),
-                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Undo,
-                                contentDescription = "Undo",
-                                tint = HydraColors.Muted,
-                                modifier = Modifier.size(12.dp)
-                            )
-                            Spacer(modifier = Modifier.width(3.dp))
-                            Text(
-                                text = "Undo last",
-                                fontSize = 11.sp,
-                                color = HydraColors.Muted
-                            )
-                        }
-                    }
                 }
             }
         }
     }
-}
 
 @Composable
 private fun SupplementCard(

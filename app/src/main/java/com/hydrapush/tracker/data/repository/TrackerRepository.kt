@@ -12,8 +12,7 @@ import com.hydrapush.tracker.domain.DailyMetrics
 import com.hydrapush.tracker.domain.ProgressMath
 import com.hydrapush.tracker.reminders.ReminderScheduler
 import com.hydrapush.tracker.widget.HydraPushAppWidgetProvider
-import java.io.BufferedReader
-import java.io.InputStreamReader
+import java.io.ByteArrayOutputStream
 import java.time.LocalDate
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -109,9 +108,7 @@ class TrackerRepository private constructor(private val appContext: Context) {
         val currentSettings = settings.first()
         val recent = dao.mostRecentDay()
 
-        if (recent == null) {
-            seedInitialDemoData(date, currentSettings)
-        } else {
+        if (recent != null) {
             var cursor = LocalDate.parse(recent).plusDays(1)
             val end = LocalDate.parse(date)
             while (cursor.isBefore(end)) {
@@ -160,74 +157,23 @@ class TrackerRepository private constructor(private val appContext: Context) {
         checkAndPersistAchievements()
     }
 
-    private suspend fun seedInitialDemoData(todayDate: String, currentSettings: TrackerSettings) {
-        val now = LocalDate.parse(todayDate)
-        val daysList = (6 downTo 0).map { now.minusDays(it.toLong()) }
-        val waterAmounts = listOf(2300, 3200, 2400, 1500, 2700, 3200, 2100)
-        val pushupSetsList = listOf(
-            listOf(30, 25, 25),
-            listOf(40, 40, 40),
-            listOf(30, 25, 25),
-            listOf(25, 30),
-            listOf(30, 30, 28),
-            listOf(40, 40, 40),
-            listOf(25, 20, 12, 15)
-        )
 
-        dao.insertRevision(
-            ConfigurationRevisionEntity(
-                effectiveLocalDay = daysList.first().toString(),
-                waterGoalMl = currentSettings.waterGoalMl,
-                pushUpGoalReps = currentSettings.pushUpGoalReps,
-                creatineRequired = currentSettings.creatineEnabled,
-                proteinRequired = currentSettings.proteinEnabled
-            )
-        )
-
-        daysList.forEachIndexed { i, d ->
-            val dayStr = d.toString()
-            val isToday = (i == 6)
-            dao.insertSnapshot(
-                DailySnapshotEntity(
-                    day = dayStr,
-                    waterGoalMl = currentSettings.waterGoalMl,
-                    pushUpGoalReps = currentSettings.pushUpGoalReps,
-                    creatineRequired = currentSettings.creatineEnabled,
-                    proteinRequired = currentSettings.proteinEnabled,
-                    creatineDone = true,
-                    proteinDone = true
-                )
-            )
-
-            if (isToday) {
-                dao.insertWater(WaterEntryEntity(day = dayStr, amountMl = 500))
-                dao.insertWater(WaterEntryEntity(day = dayStr, amountMl = 500))
-                dao.insertWater(WaterEntryEntity(day = dayStr, amountMl = 500))
-                dao.insertWater(WaterEntryEntity(day = dayStr, amountMl = 600))
-            } else {
-                dao.insertWater(WaterEntryEntity(day = dayStr, amountMl = waterAmounts[i]))
-            }
-
-            pushupSetsList[i].forEach { reps ->
-                dao.insertPushUpSet(PushUpSetEntity(day = dayStr, reps = reps))
-            }
-        }
-    }
-
-    suspend fun addWater(amount: Int) {
+    suspend fun addWater(amount: Int): Long {
         require(amount in 1..5000) { "Water entry must be between 1 and 5,000 ml" }
         reconcileToday()
-        dao.insertWater(WaterEntryEntity(day = today(), amountMl = amount))
+        val entryId = dao.insertWater(WaterEntryEntity(day = today(), amountMl = amount))
         checkAndPersistAchievements()
         HydraPushAppWidgetProvider.updateAllWidgets(appContext)
+        return entryId
     }
 
-    suspend fun addSet(reps: Int) {
+    suspend fun addSet(reps: Int): Long {
         require(reps in 1..1000) { "Set must be between 1 and 1,000 reps" }
         reconcileToday()
-        dao.insertPushUpSet(PushUpSetEntity(day = today(), reps = reps))
+        val setId = dao.insertPushUpSet(PushUpSetEntity(day = today(), reps = reps))
         checkAndPersistAchievements()
         HydraPushAppWidgetProvider.updateAllWidgets(appContext)
+        return setId
     }
 
     suspend fun undoWater(entryId: Long) {
@@ -359,11 +305,28 @@ class TrackerRepository private constructor(private val appContext: Context) {
         } ?: error("Failed to open destination output stream")
     }
 
-    suspend fun importBackup(uri: Uri): Result<Unit> = runCatching {
-        val json = appContext.contentResolver.openInputStream(uri)?.use { inputStream ->
-            BufferedReader(InputStreamReader(inputStream, Charsets.UTF_8)).readText()
-        } ?: error("Failed to open backup input stream")
+    private fun readBackupText(uri: Uri): String {
+        val input = appContext.contentResolver.openInputStream(uri)
+            ?: error("Failed to open backup input stream")
+        return input.use { stream ->
+            val output = ByteArrayOutputStream()
+            val buffer = ByteArray(8 * 1024)
+            var total = 0
+            while (true) {
+                val read = stream.read(buffer)
+                if (read < 0) break
+                total += read
+                require(total <= BackupManager.MAX_BACKUP_FILE_BYTES) {
+                    "Backup exceeds maximum allowable size (15 MB)"
+                }
+                output.write(buffer, 0, read)
+            }
+            output.toString(Charsets.UTF_8.name())
+        }
+    }
 
+    suspend fun importBackup(uri: Uri): Result<Unit> = runCatching {
+        val json = readBackupText(uri)
         val payload = BackupManager.parseAndValidate(json)
 
         mutex.withLock {
