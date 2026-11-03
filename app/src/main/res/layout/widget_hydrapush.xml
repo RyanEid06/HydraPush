@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@drawable/widget_background"
+    android:padding="12dp">
+
+    <!-- Header Row -->
+    <LinearLayout
+        android:id="@+id/widget_header"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <ImageView
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:src="@drawable/ic_launcher_hydrapush" />
+
+        <TextView
+            android:id="@+id/widget_title"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="6dp"
+            android:text="HydraPush"
+            android:textColor="#153139"
+            android:textStyle="bold"
+            android:textSize="14sp" />
+
+        <TextView
+            android:id="@+id/widget_streak"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="🔥 0-day"
+            android:textColor="#FF7D4A"
+            android:textStyle="bold"
+            android:textSize="12sp" />
+    </LinearLayout>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:layout_marginTop="6dp"
+        android:layout_marginBottom="6dp"
+        android:background="#E5F3F4" />
+
+    <!-- Content Row: Water & Pushups -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:orientation="horizontal">
+
+        <!-- Water Section -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center_vertical">
+
+            <TextView
+                android:id="@+id/widget_water_text"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="💧 0 / 2500 ml"
+                android:textColor="#0CC5BB"
+                android:textStyle="bold"
+                android:textSize="12sp" />
+
+            <Button
+                android:id="@+id/widget_water_btn"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:layout_marginTop="4dp"
+                android:text="+250 ml"
+                android:textSize="11sp"
+                android:textColor="#07373B"
+                android:backgroundTint="#E8FAF9" />
+        </LinearLayout>
+
+        <!-- Push-ups Section -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center_vertical">
+
+            <TextView
+                android:id="@+id/widget_pushup_text"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="↗ 0 / 100 reps"
+                android:textColor="#8BD70F"
+                android:textStyle="bold"
+                android:textSize="12sp" />
+
+            <Button
+                android:id="@+id/widget_pushup_btn"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:layout_marginTop="4dp"
+                android:text="+10 reps"
+                android:textSize="11sp"
+                android:textColor="#153139"
+                android:backgroundTint="#F3FCE9" />
+        </LinearLayout>
+    </LinearLayout>
+
+</LinearLayout>

@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Offline-only. NEVER add android.permission.INTERNET. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <application
+        android:allowBackup="false"
+        android:fullBackupContent="false"
+        android:icon="@drawable/ic_launcher_hydrapush"
+        android:label="@string/app_name"
+        android:roundIcon="@drawable/ic_launcher_hydrapush"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.HydraPush">
+        <activity
+            android:name="com.hydrapush.tracker.MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <receiver
+            android:name="com.hydrapush.tracker.reminders.ReminderNotificationReceiver"
+            android:exported="false" />
+
+        <receiver
+            android:name="com.hydrapush.tracker.reminders.BootCompletedReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.intent.action.TIME_SET" />
+            </intent-filter>
+        </receiver>
+
+        <receiver
+            android:name="com.hydrapush.tracker.widget.HydraPushAppWidgetProvider"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="com.hydrapush.tracker.ACTION_LOG_WATER_QUICK" />
+                <action android:name="com.hydrapush.tracker.ACTION_LOG_PUSHUP_QUICK" />
+                <action android:name="com.hydrapush.tracker.ACTION_TOGGLE_CREATINE" />
+                <action android:name="com.hydrapush.tracker.ACTION_TOGGLE_PROTEIN" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/hydrapush_widget_info" />
+        </receiver>
+    </application>
+
+</manifest>
