@@ -8,7 +8,7 @@ import org.junit.Test
 class BackupManagerTest {
 
     @Test
-    fun roundTripBackupPayloadPreservesData() {
+    fun roundTripBackupPayloadPreservesDataAndReminders() {
         val snapshots = listOf(
             DailySnapshotEntity("2026-11-01", 2500, 100, true, true, true, true),
             DailySnapshotEntity("2026-11-02", 2800, 120, false, false, false, false)
@@ -27,16 +27,24 @@ class BackupManagerTest {
         val achievements = listOf(
             AchievementEntity("first_perfect", 1000L, "2026-11-01")
         )
-        val settings = TrackerSettings(
-            waterGoalMl = 2600,
-            pushUpGoalReps = 110,
+        val nonDefaultSettings = TrackerSettings(
+            waterGoalMl = 3200,
+            pushUpGoalReps = 150,
             creatineEnabled = true,
-            proteinEnabled = false,
-            themeMode = "LIGHT"
+            proteinEnabled = true,
+            themeMode = "LIGHT",
+            waterReminderEnabled = true,
+            waterReminderIntervalHours = 3,
+            pushUpReminderEnabled = true,
+            pushUpReminderTimeMinutes = 17 * 60 + 30, // 5:30 PM
+            creatineReminderEnabled = true,
+            creatineReminderTimeMinutes = 8 * 60 + 15, // 8:15 AM
+            proteinReminderEnabled = false,
+            proteinReminderTimeMinutes = 20 * 60 + 45  // 8:45 PM
         )
 
         val json = BackupManager.createBackupJson(
-            snapshots, water, pushups, revisions, achievements, settings
+            snapshots, water, pushups, revisions, achievements, nonDefaultSettings
         )
 
         val restored = BackupManager.parseAndValidate(json)
@@ -48,8 +56,21 @@ class BackupManagerTest {
         assertEquals(2, restored.pushups.size)
         assertEquals(1, restored.revisions.size)
         assertEquals(1, restored.achievements.size)
-        assertEquals(2600, restored.settings.waterGoalMl)
-        assertEquals(false, restored.settings.proteinEnabled)
+
+        // Verify non-default reminder settings round-trip exactly
+        assertEquals(3200, restored.settings.waterGoalMl)
+        assertEquals(150, restored.settings.pushUpGoalReps)
+        assertEquals(true, restored.settings.creatineEnabled)
+        assertEquals(true, restored.settings.proteinEnabled)
+        assertEquals("LIGHT", restored.settings.themeMode)
+        assertEquals(true, restored.settings.waterReminderEnabled)
+        assertEquals(3, restored.settings.waterReminderIntervalHours)
+        assertEquals(true, restored.settings.pushUpReminderEnabled)
+        assertEquals(17 * 60 + 30, restored.settings.pushUpReminderTimeMinutes)
+        assertEquals(true, restored.settings.creatineReminderEnabled)
+        assertEquals(8 * 60 + 15, restored.settings.creatineReminderTimeMinutes)
+        assertEquals(false, restored.settings.proteinReminderEnabled)
+        assertEquals(20 * 60 + 45, restored.settings.proteinReminderTimeMinutes)
     }
 
     @Test(expected = IllegalArgumentException::class)
@@ -60,5 +81,31 @@ class BackupManagerTest {
         )
         val tamperedJson = json.replace("2500", "9999")
         BackupManager.parseAndValidate(tamperedJson)
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun invalidDateThrowsException() {
+        val snapshots = listOf(DailySnapshotEntity("invalid-date", 2500, 100, true, true))
+        val json = BackupManager.createBackupJson(
+            snapshots, emptyList(), emptyList(), emptyList(), emptyList(), TrackerSettings()
+        )
+        BackupManager.parseAndValidate(json)
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun duplicateSnapshotDaysThrowsException() {
+        val snapshots = listOf(
+            DailySnapshotEntity("2026-11-01", 2500, 100, true, true),
+            DailySnapshotEntity("2026-11-01", 2600, 100, true, true)
+        )
+        val json = BackupManager.createBackupJson(
+            snapshots, emptyList(), emptyList(), emptyList(), emptyList(), TrackerSettings()
+        )
+        BackupManager.parseAndValidate(json)
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun emptyJsonThrowsException() {
+        BackupManager.parseAndValidate("")
     }
 }

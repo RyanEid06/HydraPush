@@ -1,0 +1,24 @@
+HydraPush source audit summary (2026-11-03)
+
+Visual/source estimate before real APK screenshots: ~89–91%, not yet 95% certified.
+Core perfect-day/streak math: independently compiled + harness PASS.
+
+Critical findings:
+- AI Studio network/Firebase/Gemini template baggage remains despite offline-only product.
+- Gradle wrapper scripts/JAR absent.
+- Root debug.keystore referenced but absent from exported repo.
+- Backup omits all reminder preferences.
+- Import validation/atomicity is insufficient for malformed settings/dates/duplicates/oversized files.
+- Water 'every N hours' reminder is implemented as once-daily 10:00 alarm.
+- Default reminders are not clearly scheduled on first launch.
+- BroadcastReceiver/AppWidget coroutines can outlive receiver incorrectly without goAsync/WorkManager.
+- Stats historical goal chart uses one flat latest goal, wrong after goal changes.
+- Drilldown 'Weekly Consistency' label does not match range-wide calculation outside 7D.
+- Achievement can stay falsely unlocked after undoing the qualifying entry.
+- Widget omits optional supplements and has unused manifest toggle actions.
+- Notification small icon is not a proper monochrome notification glyph.
+- Follow System/Dark is not truly implemented because UI hard-codes light colors.
+- Emoji-heavy icons + simple Canvas runner are the main visual-fidelity gap.
+- Several interactive targets are below the 44–48dp accessibility target.
+
+See GEMINI_FIX_PASS.md for exact remediation and verification gates.

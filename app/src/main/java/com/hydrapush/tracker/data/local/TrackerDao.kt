@@ -59,6 +59,9 @@ interface TrackerDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertAchievement(achievement: AchievementEntity)
 
+    @Query("DELETE FROM achievements WHERE achievementId = :achievementId")
+    suspend fun deleteAchievement(achievementId: String)
+
     @Query("DELETE FROM water_entries WHERE id = :id AND day = :today")
     suspend fun removeWaterToday(id: Long, today: String): Int
 

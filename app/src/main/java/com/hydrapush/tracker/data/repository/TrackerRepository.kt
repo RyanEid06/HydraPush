@@ -109,7 +109,9 @@ class TrackerRepository private constructor(private val appContext: Context) {
         val currentSettings = settings.first()
         val recent = dao.mostRecentDay()
 
-        if (recent != null) {
+        if (recent == null) {
+            seedInitialDemoData(date, currentSettings)
+        } else {
             var cursor = LocalDate.parse(recent).plusDays(1)
             val end = LocalDate.parse(date)
             while (cursor.isBefore(end)) {
@@ -158,6 +160,60 @@ class TrackerRepository private constructor(private val appContext: Context) {
         checkAndPersistAchievements()
     }
 
+    private suspend fun seedInitialDemoData(todayDate: String, currentSettings: TrackerSettings) {
+        val now = LocalDate.parse(todayDate)
+        val daysList = (6 downTo 0).map { now.minusDays(it.toLong()) }
+        val waterAmounts = listOf(2300, 3200, 2400, 1500, 2700, 3200, 2100)
+        val pushupSetsList = listOf(
+            listOf(30, 25, 25),
+            listOf(40, 40, 40),
+            listOf(30, 25, 25),
+            listOf(25, 30),
+            listOf(30, 30, 28),
+            listOf(40, 40, 40),
+            listOf(25, 20, 12, 15)
+        )
+
+        dao.insertRevision(
+            ConfigurationRevisionEntity(
+                effectiveLocalDay = daysList.first().toString(),
+                waterGoalMl = currentSettings.waterGoalMl,
+                pushUpGoalReps = currentSettings.pushUpGoalReps,
+                creatineRequired = currentSettings.creatineEnabled,
+                proteinRequired = currentSettings.proteinEnabled
+            )
+        )
+
+        daysList.forEachIndexed { i, d ->
+            val dayStr = d.toString()
+            val isToday = (i == 6)
+            dao.insertSnapshot(
+                DailySnapshotEntity(
+                    day = dayStr,
+                    waterGoalMl = currentSettings.waterGoalMl,
+                    pushUpGoalReps = currentSettings.pushUpGoalReps,
+                    creatineRequired = currentSettings.creatineEnabled,
+                    proteinRequired = currentSettings.proteinEnabled,
+                    creatineDone = true,
+                    proteinDone = true
+                )
+            )
+
+            if (isToday) {
+                dao.insertWater(WaterEntryEntity(day = dayStr, amountMl = 500))
+                dao.insertWater(WaterEntryEntity(day = dayStr, amountMl = 500))
+                dao.insertWater(WaterEntryEntity(day = dayStr, amountMl = 500))
+                dao.insertWater(WaterEntryEntity(day = dayStr, amountMl = 600))
+            } else {
+                dao.insertWater(WaterEntryEntity(day = dayStr, amountMl = waterAmounts[i]))
+            }
+
+            pushupSetsList[i].forEach { reps ->
+                dao.insertPushUpSet(PushUpSetEntity(day = dayStr, reps = reps))
+            }
+        }
+    }
+
     suspend fun addWater(amount: Int) {
         require(amount in 1..5000) { "Water entry must be between 1 and 5,000 ml" }
         reconcileToday()
@@ -176,11 +232,13 @@ class TrackerRepository private constructor(private val appContext: Context) {
 
     suspend fun undoWater(entryId: Long) {
         dao.removeWaterToday(entryId, today())
+        checkAndPersistAchievements()
         HydraPushAppWidgetProvider.updateAllWidgets(appContext)
     }
 
     suspend fun removeSet(setId: Long) {
         dao.removePushUpSetToday(setId, today())
+        checkAndPersistAchievements()
         HydraPushAppWidgetProvider.updateAllWidgets(appContext)
     }
 
@@ -261,6 +319,10 @@ class TrackerRepository private constructor(private val appContext: Context) {
 
         val evaluated = ProgressMath.evaluateAchievements(dayMetrics)
         val todayStr = today()
+        val unlockedIds = evaluated.filter { it.isUnlocked }.map { it.id }.toSet()
+        val existingAchievements = dao.getAllAchievements()
+
+        // Insert new unlocks
         evaluated.filter { it.isUnlocked }.forEach { ach ->
             dao.insertAchievement(
                 AchievementEntity(
@@ -269,6 +331,13 @@ class TrackerRepository private constructor(private val appContext: Context) {
                     sourceDay = ach.unlockedDate ?: todayStr
                 )
             )
+        }
+
+        // Remove any falsely persisted unlock that no longer qualifies across entire history
+        existingAchievements.forEach { existing ->
+            if (existing.achievementId !in unlockedIds) {
+                dao.deleteAchievement(existing.achievementId)
+            }
         }
     }
 
@@ -298,14 +367,35 @@ class TrackerRepository private constructor(private val appContext: Context) {
         val payload = BackupManager.parseAndValidate(json)
 
         mutex.withLock {
-            dao.restoreFullDatabase(
-                snapshots = payload.snapshots,
-                water = payload.water,
-                pushups = payload.pushups,
-                revisions = payload.revisions,
-                achievements = payload.achievements
-            )
-            settingsStore.save(payload.settings)
+            // Keep memory copy of current state for atomic rollback
+            val priorSnapshots = dao.getAllSnapshots()
+            val priorWater = dao.getAllWater()
+            val priorPushups = dao.getAllPushUpSets()
+            val priorRevisions = dao.getAllRevisions()
+            val priorAchievements = dao.getAllAchievements()
+            val priorSettings = settings.first()
+
+            try {
+                dao.restoreFullDatabase(
+                    snapshots = payload.snapshots,
+                    water = payload.water,
+                    pushups = payload.pushups,
+                    revisions = payload.revisions,
+                    achievements = payload.achievements
+                )
+                settingsStore.save(payload.settings)
+            } catch (e: Exception) {
+                // Rollback to prior data
+                dao.restoreFullDatabase(
+                    snapshots = priorSnapshots,
+                    water = priorWater,
+                    pushups = priorPushups,
+                    revisions = priorRevisions,
+                    achievements = priorAchievements
+                )
+                settingsStore.save(priorSettings)
+                throw e
+            }
         }
 
         reconcileToday()

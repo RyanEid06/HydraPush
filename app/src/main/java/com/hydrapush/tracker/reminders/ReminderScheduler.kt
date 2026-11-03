@@ -63,12 +63,14 @@ object ReminderScheduler {
         createNotificationChannels(context)
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
 
-        // Water reminder
+        // Water reminder with configured interval (e.g. every N hours)
         if (settings.waterReminderEnabled) {
-            scheduleDailyRepeating(
+            val intervalHours = settings.waterReminderIntervalHours.coerceIn(1, 24)
+            val intervalMillis = intervalHours * 60 * 60 * 1000L
+            scheduleIntervalRepeating(
                 context, alarmManager, ID_WATER,
-                hour = 10, minute = 0,
-                type = "water", title = "Time to hydrate 💧",
+                intervalMillis = intervalMillis,
+                type = "water", title = "Time to hydrate",
                 message = "Drink a glass of water to keep your daily streak alive!"
             )
         } else {
@@ -77,12 +79,12 @@ object ReminderScheduler {
 
         // Push-up reminder
         if (settings.pushUpReminderEnabled) {
-            val hour = settings.pushUpReminderTimeMinutes / 60
-            val minute = settings.pushUpReminderTimeMinutes % 60
+            val hour = (settings.pushUpReminderTimeMinutes / 60).coerceIn(0, 23)
+            val minute = (settings.pushUpReminderTimeMinutes % 60).coerceIn(0, 59)
             scheduleDailyRepeating(
                 context, alarmManager, ID_PUSHUP,
                 hour = hour, minute = minute,
-                type = "pushup", title = "Push-ups time ↗",
+                type = "pushup", title = "Push-ups time",
                 message = "Log a set of push-ups toward your daily goal!"
             )
         } else {
@@ -91,12 +93,12 @@ object ReminderScheduler {
 
         // Creatine reminder (only active if habit itself is enabled)
         if (settings.creatineEnabled && settings.creatineReminderEnabled) {
-            val hour = settings.creatineReminderTimeMinutes / 60
-            val minute = settings.creatineReminderTimeMinutes % 60
+            val hour = (settings.creatineReminderTimeMinutes / 60).coerceIn(0, 23)
+            val minute = (settings.creatineReminderTimeMinutes % 60).coerceIn(0, 59)
             scheduleDailyRepeating(
                 context, alarmManager, ID_CREATINE,
                 hour = hour, minute = minute,
-                type = "creatine", title = "Creatine reminder ⚡",
+                type = "creatine", title = "Creatine reminder",
                 message = "Take your 5g daily creatine dose."
             )
         } else {
@@ -105,16 +107,55 @@ object ReminderScheduler {
 
         // Protein reminder (only active if habit itself is enabled)
         if (settings.proteinEnabled && settings.proteinReminderEnabled) {
-            val hour = settings.proteinReminderTimeMinutes / 60
-            val minute = settings.proteinReminderTimeMinutes % 60
+            val hour = (settings.proteinReminderTimeMinutes / 60).coerceIn(0, 23)
+            val minute = (settings.proteinReminderTimeMinutes % 60).coerceIn(0, 59)
             scheduleDailyRepeating(
                 context, alarmManager, ID_PROTEIN,
                 hour = hour, minute = minute,
-                type = "protein", title = "Protein Shake reminder 🥤",
+                type = "protein", title = "Protein Shake reminder",
                 message = "Time for your daily protein shake serving."
             )
         } else {
             cancel(context, alarmManager, ID_PROTEIN)
+        }
+    }
+
+    private fun scheduleIntervalRepeating(
+        context: Context,
+        alarmManager: AlarmManager,
+        requestCode: Int,
+        intervalMillis: Long,
+        type: String,
+        title: String,
+        message: String
+    ) {
+        val intent = Intent(context, ReminderNotificationReceiver::class.java).apply {
+            putExtra("type", type)
+            putExtra("title", title)
+            putExtra("message", message)
+            putExtra("id", requestCode)
+        }
+        val pendingIntent = PendingIntent.getBroadcast(
+            context,
+            requestCode,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val triggerAtMillis = System.currentTimeMillis() + intervalMillis
+        try {
+            alarmManager.setInexactRepeating(
+                AlarmManager.RTC_WAKEUP,
+                triggerAtMillis,
+                intervalMillis,
+                pendingIntent
+            )
+        } catch (_: SecurityException) {
+            alarmManager.set(
+                AlarmManager.RTC_WAKEUP,
+                triggerAtMillis,
+                pendingIntent
+            )
         }
     }
 
@@ -159,7 +200,6 @@ object ReminderScheduler {
                 pendingIntent
             )
         } catch (_: SecurityException) {
-            // Safe fallback if exact alarm permission is absent on newer Android
             alarmManager.set(
                 AlarmManager.RTC_WAKEUP,
                 calendar.timeInMillis,
@@ -208,7 +248,7 @@ class ReminderNotificationReceiver : BroadcastReceiver() {
         )
 
         val notification = NotificationCompat.Builder(context, channelId)
-            .setSmallIcon(R.drawable.ic_launcher_hydrapush)
+            .setSmallIcon(R.drawable.ic_notification_hydra)
             .setContentTitle(title)
             .setContentText(message)
             .setAutoCancel(true)
@@ -228,10 +268,15 @@ class BootCompletedReceiver : BroadcastReceiver() {
             action == Intent.ACTION_TIMEZONE_CHANGED ||
             action == Intent.ACTION_TIME_CHANGED
         ) {
+            val pendingResult = goAsync()
             CoroutineScope(Dispatchers.IO).launch {
-                val store = TrackerSettingsStore(context.applicationContext)
-                val settings = store.settings.first()
-                ReminderScheduler.scheduleAll(context.applicationContext, settings)
+                try {
+                    val store = TrackerSettingsStore(context.applicationContext)
+                    val settings = store.settings.first()
+                    ReminderScheduler.scheduleAll(context.applicationContext, settings)
+                } finally {
+                    pendingResult.finish()
+                }
             }
         }
     }

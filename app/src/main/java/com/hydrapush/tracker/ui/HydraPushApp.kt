@@ -11,7 +11,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.hydrapush.tracker.data.preferences.TrackerSettings
 import com.hydrapush.tracker.data.repository.TrackerRepository
 import com.hydrapush.tracker.ui.screens.DashboardScreen
@@ -21,6 +23,7 @@ import com.hydrapush.tracker.ui.theme.HydraColors
 import com.hydrapush.tracker.ui.theme.HydraTheme
 import java.time.LocalDate
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 
 enum class MainTab { Dashboard, Stats, Settings }
 
@@ -34,9 +37,11 @@ fun HydraPushApp(context: Context) {
     var currentTab by remember { mutableStateOf(MainTab.Dashboard) }
     var localToday by remember { mutableStateOf(LocalDate.now()) }
 
-    // Periodic rollover & date check
+    // Periodic rollover & date check, schedule reminders on initial launch
     LaunchedEffect(repository) {
         repository.reconcileToday()
+        val currentSettings = repository.settings.first()
+        com.hydrapush.tracker.reminders.ReminderScheduler.scheduleAll(context.applicationContext, currentSettings)
         while (true) {
             val now = LocalDate.now()
             if (now != localToday) {
@@ -54,7 +59,7 @@ fun HydraPushApp(context: Context) {
             bottomBar = {
                 NavigationBar(
                     containerColor = Color.White,
-                    tonalElevation = 0.dp,
+                    tonalElevation = 2.dp,
                     modifier = Modifier.testTag("bottom_nav_bar")
                 ) {
                     listOf(
@@ -67,13 +72,13 @@ fun HydraPushApp(context: Context) {
                             selected = isSelected,
                             onClick = { currentTab = destination },
                             icon = { Icon(icon, contentDescription = title) },
-                            label = { Text(title) },
+                            label = { Text(title, fontSize = 11.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium) },
                             colors = NavigationBarItemDefaults.colors(
-                                selectedIconColor = HydraColors.Navy,
+                                selectedIconColor = HydraColors.PrimaryTeal,
                                 selectedTextColor = HydraColors.Navy,
                                 unselectedIconColor = HydraColors.Muted,
                                 unselectedTextColor = HydraColors.Muted,
-                                indicatorColor = HydraColors.TealCard
+                                indicatorColor = Color(0xFFD7F5F0)
                             ),
                             modifier = Modifier.testTag("nav_item_${title.lowercase()}")
                         )

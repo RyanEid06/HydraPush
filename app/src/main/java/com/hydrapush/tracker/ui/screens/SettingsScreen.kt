@@ -7,6 +7,7 @@ import android.net.Uri
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -22,13 +23,17 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import com.hydrapush.tracker.R
 import com.hydrapush.tracker.data.preferences.TrackerSettings
 import com.hydrapush.tracker.data.repository.TrackerRepository
 import com.hydrapush.tracker.ui.components.BrandHeader
@@ -50,10 +55,9 @@ fun SettingsScreen(
     var goalInput by remember { mutableStateOf("") }
     var goalError by remember { mutableStateOf<String?>(null) }
 
-    var showThemeDialog by remember { mutableStateOf(false) }
     var showTimeDialogTarget by remember { mutableStateOf<String?>(null) }
-    var timeHours by remember { mutableStateOf(12) }
-    var timeMinutes by remember { mutableStateOf(0) }
+    var customHour by remember { mutableIntStateOf(12) }
+    var customMinute by remember { mutableIntStateOf(0) }
 
     var showAboutDialog by remember { mutableStateOf(false) }
     var pendingImportUri by remember { mutableStateOf<Uri?>(null) }
@@ -111,7 +115,13 @@ fun SettingsScreen(
 
             // Title
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("⚙️ ", fontSize = 20.sp)
+                Icon(
+                    imageVector = Icons.Default.Settings,
+                    contentDescription = null,
+                    tint = HydraColors.Navy,
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
                 Text(
                     text = "Settings",
                     style = MaterialTheme.typography.headlineSmall,
@@ -124,11 +134,11 @@ fun SettingsScreen(
 
             // 1. Daily Goals Group
             SectionCard(modifier = Modifier.fillMaxWidth().testTag("daily_goals_group")) {
-                GroupHeader(icon = "🎯", title = "Daily Goals")
+                GroupHeader(icon = Icons.Default.TrackChanges, title = "Daily Goals")
                 Spacer(modifier = Modifier.height(10.dp))
 
                 SettingRow(
-                    icon = "💧",
+                    iconRes = R.drawable.water_icon,
                     title = "Water Goal",
                     value = "${String.format("%,d", settings.waterGoalMl)} ml",
                     onClick = {
@@ -141,7 +151,7 @@ fun SettingsScreen(
                 HorizontalDivider(color = Color(0xFFF0F5F5), modifier = Modifier.padding(vertical = 4.dp))
 
                 SettingRow(
-                    icon = "↗",
+                    iconRes = R.drawable.pushup_icon,
                     title = "Push-up Goal",
                     value = "${settings.pushUpGoalReps} reps",
                     onClick = {
@@ -156,7 +166,7 @@ fun SettingsScreen(
 
             // 2. Active Habits Group
             SectionCard(modifier = Modifier.fillMaxWidth().testTag("active_habits_group")) {
-                GroupHeader(icon = "⚡", title = "Active Habits")
+                GroupHeader(icon = Icons.Default.FitnessCenter, title = "Active Habits")
                 Spacer(modifier = Modifier.height(10.dp))
 
                 // Water (Permanently On)
@@ -164,7 +174,13 @@ fun SettingsScreen(
                     modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("💧", fontSize = 16.sp, modifier = Modifier.width(28.dp))
+                    Image(
+                        painter = painterResource(R.drawable.water_icon),
+                        contentDescription = null,
+                        modifier = Modifier.size(22.dp),
+                        contentScale = ContentScale.Fit
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
                     Text(
                         text = "Water",
                         fontWeight = FontWeight.SemiBold,
@@ -195,7 +211,13 @@ fun SettingsScreen(
                     modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("↗", fontSize = 16.sp, color = HydraColors.Lime, fontWeight = FontWeight.Bold, modifier = Modifier.width(28.dp))
+                    Image(
+                        painter = painterResource(R.drawable.pushup_icon),
+                        contentDescription = null,
+                        modifier = Modifier.size(22.dp),
+                        contentScale = ContentScale.Fit
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
                     Text(
                         text = "Push-ups",
                         fontWeight = FontWeight.SemiBold,
@@ -226,7 +248,13 @@ fun SettingsScreen(
                     modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("⚡", fontSize = 16.sp, modifier = Modifier.width(28.dp))
+                    Image(
+                        painter = painterResource(R.drawable.creatine_icon),
+                        contentDescription = null,
+                        modifier = Modifier.size(22.dp),
+                        contentScale = ContentScale.Fit
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = "Creatine",
@@ -260,7 +288,13 @@ fun SettingsScreen(
                     modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("🥤", fontSize = 16.sp, modifier = Modifier.width(28.dp))
+                    Image(
+                        painter = painterResource(R.drawable.protein_icon),
+                        contentDescription = null,
+                        modifier = Modifier.size(22.dp),
+                        contentScale = ContentScale.Fit
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = "Protein Shake",
@@ -292,21 +326,23 @@ fun SettingsScreen(
 
             // 3. Reminders Group
             SectionCard(modifier = Modifier.fillMaxWidth().testTag("reminders_group")) {
-                GroupHeader(icon = "🔔", title = "Reminders")
+                GroupHeader(icon = Icons.Default.Notifications, title = "Reminders")
                 Spacer(modifier = Modifier.height(10.dp))
 
                 // Water Reminder
                 ReminderRow(
-                    icon = "💧",
+                    iconRes = R.drawable.water_icon,
                     title = "Water Reminder",
                     subtitle = "Every ${settings.waterReminderIntervalHours} hours",
                     enabled = settings.waterReminderEnabled,
                     onToggle = { isEnabled ->
-                        checkPermissionAndLaunch(context, notificationPermissionLauncher)
+                        if (isEnabled) {
+                            checkPermissionAndLaunch(context, notificationPermissionLauncher)
+                        }
                         scope.launch { repo.updateSettings { it.copy(waterReminderEnabled = isEnabled) } }
                     },
                     onClickSchedule = {
-                        timeHours = settings.waterReminderIntervalHours
+                        customHour = settings.waterReminderIntervalHours
                         showTimeDialogTarget = "water_interval"
                     }
                 )
@@ -315,17 +351,19 @@ fun SettingsScreen(
 
                 // Push-up Reminder
                 ReminderRow(
-                    icon = "↗",
+                    iconRes = R.drawable.pushup_icon,
                     title = "Push-up Reminder",
                     subtitle = formatMinutesToTime(settings.pushUpReminderTimeMinutes),
                     enabled = settings.pushUpReminderEnabled,
                     onToggle = { isEnabled ->
-                        checkPermissionAndLaunch(context, notificationPermissionLauncher)
+                        if (isEnabled) {
+                            checkPermissionAndLaunch(context, notificationPermissionLauncher)
+                        }
                         scope.launch { repo.updateSettings { it.copy(pushUpReminderEnabled = isEnabled) } }
                     },
                     onClickSchedule = {
-                        timeHours = settings.pushUpReminderTimeMinutes / 60
-                        timeMinutes = settings.pushUpReminderTimeMinutes % 60
+                        customHour = settings.pushUpReminderTimeMinutes / 60
+                        customMinute = settings.pushUpReminderTimeMinutes % 60
                         showTimeDialogTarget = "pushup_time"
                     }
                 )
@@ -334,19 +372,21 @@ fun SettingsScreen(
 
                 // Creatine Reminder
                 ReminderRow(
-                    icon = "⚡",
+                    iconRes = R.drawable.creatine_icon,
                     title = "Creatine Reminder",
                     subtitle = if (!settings.creatineEnabled) "Habit deactivated" else formatMinutesToTime(settings.creatineReminderTimeMinutes),
                     enabled = settings.creatineEnabled && settings.creatineReminderEnabled,
                     isHabitActive = settings.creatineEnabled,
                     onToggle = { isEnabled ->
-                        checkPermissionAndLaunch(context, notificationPermissionLauncher)
+                        if (isEnabled) {
+                            checkPermissionAndLaunch(context, notificationPermissionLauncher)
+                        }
                         scope.launch { repo.updateSettings { it.copy(creatineReminderEnabled = isEnabled) } }
                     },
                     onClickSchedule = {
                         if (settings.creatineEnabled) {
-                            timeHours = settings.creatineReminderTimeMinutes / 60
-                            timeMinutes = settings.creatineReminderTimeMinutes % 60
+                            customHour = settings.creatineReminderTimeMinutes / 60
+                            customMinute = settings.creatineReminderTimeMinutes % 60
                             showTimeDialogTarget = "creatine_time"
                         }
                     }
@@ -356,19 +396,21 @@ fun SettingsScreen(
 
                 // Protein Shake Reminder
                 ReminderRow(
-                    icon = "🥤",
+                    iconRes = R.drawable.protein_icon,
                     title = "Protein Shake Reminder",
                     subtitle = if (!settings.proteinEnabled) "Habit deactivated" else formatMinutesToTime(settings.proteinReminderTimeMinutes),
                     enabled = settings.proteinEnabled && settings.proteinReminderEnabled,
                     isHabitActive = settings.proteinEnabled,
                     onToggle = { isEnabled ->
-                        checkPermissionAndLaunch(context, notificationPermissionLauncher)
+                        if (isEnabled) {
+                            checkPermissionAndLaunch(context, notificationPermissionLauncher)
+                        }
                         scope.launch { repo.updateSettings { it.copy(proteinReminderEnabled = isEnabled) } }
                     },
                     onClickSchedule = {
                         if (settings.proteinEnabled) {
-                            timeHours = settings.proteinReminderTimeMinutes / 60
-                            timeMinutes = settings.proteinReminderTimeMinutes % 60
+                            customHour = settings.proteinReminderTimeMinutes / 60
+                            customMinute = settings.proteinReminderTimeMinutes % 60
                             showTimeDialogTarget = "protein_time"
                         }
                     }
@@ -377,30 +419,9 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            // 4. Appearance Group
-            SectionCard(modifier = Modifier.fillMaxWidth().testTag("appearance_group")) {
-                GroupHeader(icon = "🎨", title = "Appearance")
-                Spacer(modifier = Modifier.height(10.dp))
-
-                val themeLabel = when (settings.themeMode.uppercase()) {
-                    "LIGHT" -> "Light"
-                    "DARK" -> "Dark"
-                    else -> "Follow System"
-                }
-
-                SettingRow(
-                    icon = "☀️",
-                    title = "Theme",
-                    value = themeLabel,
-                    onClick = { showThemeDialog = true }
-                )
-            }
-
-            Spacer(modifier = Modifier.height(14.dp))
-
-            // 5. Data & Backup Group
+            // 4. Data & Backup Group
             SectionCard(modifier = Modifier.fillMaxWidth().testTag("data_backup_group")) {
-                GroupHeader(icon = "💾", title = "Data")
+                GroupHeader(icon = Icons.Default.Storage, title = "Data & Backup")
                 Spacer(modifier = Modifier.height(10.dp))
 
                 Row(
@@ -410,7 +431,7 @@ fun SettingsScreen(
                             val defaultName = "hydrapush_backup_${LocalDate.now()}.json"
                             exportLauncher.launch(defaultName)
                         }
-                        .padding(vertical = 10.dp)
+                        .padding(vertical = 12.dp)
                         .testTag("export_backup_button"),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -443,7 +464,7 @@ fun SettingsScreen(
                         .clickable {
                             importLauncher.launch(arrayOf("application/json", "*/*"))
                         }
-                        .padding(vertical = 10.dp)
+                        .padding(vertical = 12.dp)
                         .testTag("import_backup_button"),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -471,13 +492,13 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            // 6. About Group
+            // 5. About Group
             SectionCard(modifier = Modifier.fillMaxWidth().testTag("about_group")) {
-                GroupHeader(icon = "ℹ️", title = "About")
+                GroupHeader(icon = Icons.Default.Info, title = "About")
                 Spacer(modifier = Modifier.height(10.dp))
 
                 SettingRow(
-                    icon = "📱",
+                    icon = Icons.Default.PhoneAndroid,
                     title = "App Version",
                     value = "v1.0.0",
                     onClick = { showAboutDialog = true }
@@ -561,43 +582,6 @@ fun SettingsScreen(
         )
     }
 
-    // Theme Picker Dialog
-    if (showThemeDialog) {
-        AlertDialog(
-            onDismissRequest = { showThemeDialog = false },
-            title = { Text("Choose Theme", fontWeight = FontWeight.Bold) },
-            text = {
-                Column {
-                    listOf("Follow System" to "SYSTEM", "Light" to "LIGHT", "Dark" to "DARK").forEach { (label, mode) ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    scope.launch { repo.updateSettings { it.copy(themeMode = mode) } }
-                                    showThemeDialog = false
-                                }
-                                .padding(vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            RadioButton(
-                                selected = settings.themeMode.equals(mode, ignoreCase = true),
-                                onClick = {
-                                    scope.launch { repo.updateSettings { it.copy(themeMode = mode) } }
-                                    showThemeDialog = false
-                                }
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(label, fontSize = 14.sp, color = HydraColors.Navy)
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { showThemeDialog = false }) { Text("Close") }
-            }
-        )
-    }
-
     // Time / Interval picker dialog for reminders
     showTimeDialogTarget?.let { target ->
         AlertDialog(
@@ -618,7 +602,7 @@ fun SettingsScreen(
                     Column {
                         Text("Remind me every:", fontSize = 13.sp, color = HydraColors.Muted)
                         Spacer(modifier = Modifier.height(8.dp))
-                        listOf(1, 2, 3, 4).forEach { hours ->
+                        listOf(1, 2, 3, 4, 6, 8).forEach { hours ->
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -643,38 +627,104 @@ fun SettingsScreen(
                     }
                 } else {
                     Column {
-                        Text("Select time of day:", fontSize = 13.sp, color = HydraColors.Muted)
+                        Text("Set reminder time:", fontSize = 13.sp, color = HydraColors.Muted)
                         Spacer(modifier = Modifier.height(10.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+
+                        // Quick presets
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             listOf(
-                                "Morning (9:00 AM)" to (9 * 60),
-                                "Noon (12:00 PM)" to (12 * 60),
-                                "Afternoon (3:00 PM)" to (15 * 60),
-                                "Evening (6:00 PM)" to (18 * 60),
-                                "Night (8:00 PM)" to (20 * 60)
+                                "9:00 AM" to (9 * 60),
+                                "12:00 PM" to (12 * 60),
+                                "3:00 PM" to (15 * 60),
+                                "6:00 PM" to (18 * 60),
+                                "8:00 PM" to (20 * 60)
                             ).forEach { (label, minutes) ->
                                 SuggestionChip(
                                     onClick = {
-                                        scope.launch {
-                                            repo.updateSettings { s ->
-                                                when (target) {
-                                                    "pushup_time" -> s.copy(pushUpReminderTimeMinutes = minutes)
-                                                    "creatine_time" -> s.copy(creatineReminderTimeMinutes = minutes)
-                                                    else -> s.copy(proteinReminderTimeMinutes = minutes)
-                                                }
-                                            }
-                                        }
-                                        showTimeDialogTarget = null
+                                        customHour = minutes / 60
+                                        customMinute = minutes % 60
                                     },
-                                    label = { Text(label, fontSize = 11.sp) }
+                                    label = { Text(label, fontSize = 10.sp) }
                                 )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        // Hour / Minute custom selector
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            // Hour
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("Hour", fontSize = 11.sp, color = HydraColors.Muted)
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    IconButton(onClick = { customHour = if (customHour > 0) customHour - 1 else 23 }) {
+                                        Text("-", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                    Text(
+                                        text = "%02d".format(customHour),
+                                        fontSize = 20.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = HydraColors.Navy
+                                    )
+                                    IconButton(onClick = { customHour = if (customHour < 23) customHour + 1 else 0 }) {
+                                        Text("+", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+
+                            Text(":", fontSize = 22.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 8.dp))
+
+                            // Minute
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("Minute", fontSize = 11.sp, color = HydraColors.Muted)
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    IconButton(onClick = { customMinute = if (customMinute >= 5) customMinute - 5 else 55 }) {
+                                        Text("-", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                    Text(
+                                        text = "%02d".format(customMinute),
+                                        fontSize = 20.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = HydraColors.Navy
+                                    )
+                                    IconButton(onClick = { customMinute = if (customMinute <= 50) customMinute + 5 else 0 }) {
+                                        Text("+", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
                             }
                         }
                     }
                 }
             },
             confirmButton = {
-                TextButton(onClick = { showTimeDialogTarget = null }) { Text("Done") }
+                Button(
+                    onClick = {
+                        val minutes = customHour * 60 + customMinute
+                        scope.launch {
+                            repo.updateSettings { s ->
+                                when (target) {
+                                    "pushup_time" -> s.copy(pushUpReminderTimeMinutes = minutes)
+                                    "creatine_time" -> s.copy(creatineReminderTimeMinutes = minutes)
+                                    "protein_time" -> s.copy(proteinReminderTimeMinutes = minutes)
+                                    else -> s
+                                }
+                            }
+                        }
+                        showTimeDialogTarget = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = HydraColors.PrimaryTeal)
+                ) {
+                    Text("Save Time")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showTimeDialogTarget = null }) {
+                    Text("Cancel")
+                }
             }
         )
     }
@@ -728,7 +778,12 @@ fun SettingsScreen(
             onDismissRequest = { showAboutDialog = false },
             title = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("💧 ", fontSize = 20.sp)
+                    Image(
+                        painter = painterResource(R.drawable.ic_hydra_drop),
+                        contentDescription = null,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
                     Text("HydraPush v1.0.0", fontWeight = FontWeight.Bold)
                 }
             },
@@ -744,7 +799,7 @@ fun SettingsScreen(
                         text = "• 100% Offline: Zero internet permission\n" +
                             "• Private: No account, no telemetry, no ads\n" +
                             "• Portable: User-controlled JSON backups via Storage Access Framework\n" +
-                            "• Immutable History: Past records are permanently preserved",
+                            "• Historical Integrity: Past records are read-only during normal use; full backup restore replaces the dataset after confirmation.",
                         fontSize = 12.sp,
                         color = HydraColors.Muted,
                         lineHeight = 18.sp
@@ -758,34 +813,16 @@ fun SettingsScreen(
     }
 }
 
-private fun checkPermissionAndLaunch(
-    context: Context,
-    launcher: androidx.activity.result.ActivityResultLauncher<String>
-) {
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-            launcher.launch(Manifest.permission.POST_NOTIFICATIONS)
-        }
-    }
-}
-
-private fun formatMinutesToTime(minutes: Int): String {
-    val h = (minutes / 60) % 24
-    val m = minutes % 60
-    val ampm = if (h >= 12) "PM" else "AM"
-    val displayH = when {
-        h == 0 -> 12
-        h > 12 -> h - 12
-        else -> h
-    }
-    return "%d:%02d %s".format(displayH, m, ampm)
-}
-
 @Composable
-private fun GroupHeader(icon: String, title: String) {
+private fun GroupHeader(icon: ImageVector, title: String) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(icon, fontSize = 16.sp)
-        Spacer(modifier = Modifier.width(6.dp))
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = HydraColors.PrimaryTeal,
+            modifier = Modifier.size(18.dp)
+        )
+        Spacer(modifier = Modifier.width(8.dp))
         Text(
             text = title,
             fontWeight = FontWeight.Bold,
@@ -797,7 +834,8 @@ private fun GroupHeader(icon: String, title: String) {
 
 @Composable
 private fun SettingRow(
-    icon: String,
+    icon: ImageVector? = null,
+    iconRes: Int? = null,
     title: String,
     value: String,
     onClick: () -> Unit
@@ -806,10 +844,25 @@ private fun SettingRow(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(vertical = 10.dp),
+            .padding(vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(icon, fontSize = 16.sp, modifier = Modifier.width(28.dp))
+        if (iconRes != null) {
+            Image(
+                painter = painterResource(iconRes),
+                contentDescription = null,
+                modifier = Modifier.size(20.dp),
+                contentScale = ContentScale.Fit
+            )
+        } else if (icon != null) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = HydraColors.PrimaryTeal,
+                modifier = Modifier.size(20.dp)
+            )
+        }
+        Spacer(modifier = Modifier.width(10.dp))
         Text(
             text = title,
             fontWeight = FontWeight.SemiBold,
@@ -823,19 +876,19 @@ private fun SettingRow(
             color = HydraColors.PrimaryTeal,
             fontWeight = FontWeight.Medium
         )
-        Spacer(modifier = Modifier.width(4.dp))
+        Spacer(modifier = Modifier.width(6.dp))
         Icon(
             imageVector = Icons.Default.ChevronRight,
             contentDescription = null,
             tint = HydraColors.Muted,
-            modifier = Modifier.size(16.dp)
+            modifier = Modifier.size(18.dp)
         )
     }
 }
 
 @Composable
 private fun ReminderRow(
-    icon: String,
+    iconRes: Int,
     title: String,
     subtitle: String,
     enabled: Boolean,
@@ -846,14 +899,20 @@ private fun ReminderRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp),
+            .padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(icon, fontSize = 16.sp, modifier = Modifier.width(28.dp))
+        Image(
+            painter = painterResource(iconRes),
+            contentDescription = null,
+            modifier = Modifier.size(22.dp),
+            contentScale = ContentScale.Fit
+        )
+        Spacer(modifier = Modifier.width(10.dp))
         Column(
             modifier = Modifier
                 .weight(1f)
-                .clickable(enabled = isHabitActive, onClick = onClickSchedule)
+                .clickable(enabled = enabled && isHabitActive, onClick = onClickSchedule)
         ) {
             Text(
                 text = title,
@@ -864,14 +923,14 @@ private fun ReminderRow(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = subtitle,
-                    fontSize = 11.sp,
-                    color = if (isHabitActive) HydraColors.PrimaryTeal else HydraColors.Muted
+                    fontSize = 12.sp,
+                    color = if (enabled && isHabitActive) HydraColors.PrimaryTeal else HydraColors.Muted
                 )
-                if (isHabitActive) {
-                    Spacer(modifier = Modifier.width(2.dp))
+                if (enabled && isHabitActive) {
+                    Spacer(modifier = Modifier.width(4.dp))
                     Icon(
-                        imageVector = Icons.Default.ChevronRight,
-                        contentDescription = null,
+                        imageVector = Icons.Default.Edit,
+                        contentDescription = "Edit",
                         tint = HydraColors.PrimaryTeal,
                         modifier = Modifier.size(12.dp)
                     )
@@ -879,13 +938,39 @@ private fun ReminderRow(
             }
         }
         Switch(
-            checked = enabled,
-            enabled = isHabitActive,
+            checked = enabled && isHabitActive,
             onCheckedChange = onToggle,
+            enabled = isHabitActive,
             colors = SwitchDefaults.colors(
                 checkedThumbColor = Color.White,
                 checkedTrackColor = HydraColors.PrimaryTeal
             )
         )
+    }
+}
+
+private fun formatMinutesToTime(minutesSinceMidnight: Int): String {
+    val h24 = (minutesSinceMidnight / 60) % 24
+    val m = minutesSinceMidnight % 60
+    val amPm = if (h24 < 12) "AM" else "PM"
+    val h12 = when (val mod = h24 % 12) {
+        0 -> 12
+        else -> mod
+    }
+    return "%d:%02d %s".format(h12, m, amPm)
+}
+
+private fun checkPermissionAndLaunch(
+    context: Context,
+    launcher: androidx.activity.result.ActivityResultLauncher<String>
+) {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        if (ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            launcher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
     }
 }

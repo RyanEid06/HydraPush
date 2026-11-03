@@ -43,8 +43,6 @@
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
                 <action android:name="com.hydrapush.tracker.ACTION_LOG_WATER_QUICK" />
                 <action android:name="com.hydrapush.tracker.ACTION_LOG_PUSHUP_QUICK" />
-                <action android:name="com.hydrapush.tracker.ACTION_TOGGLE_CREATINE" />
-                <action android:name="com.hydrapush.tracker.ACTION_TOGGLE_PROTEIN" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"
