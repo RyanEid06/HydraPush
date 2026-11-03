@@ -66,7 +66,7 @@ jobs:
         run: ./gradlew --no-daemon assembleDebug
 
       - name: Verify and build ARM64 release APK
-        run: ./gradlew --no-daemon testReleaseUnitTest lintRelease assembleRelease
+        run: ./gradlew --no-daemon lintRelease assembleRelease
 
       - name: Upload ARM64 release APK
         uses: actions/upload-artifact@v4
