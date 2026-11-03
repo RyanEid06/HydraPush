@@ -1,13 +1,16 @@
 # HydraPush Worklog
 
-- Objective: Finish V1 CI verification, build the Android APK, and place it on the Desktop.
-- Stage: Fixing the lint issue surfaced after the resource fix.
-- Requirements: Preserve existing user edit in `app/src/main/res/values-v27/themes.xml`; use the existing Gradle wrapper/project checks; deliver APK to `C:\Users\Administrator\Desktop`.
-- Architecture: Single-module Android app (`:app`), Kotlin DSL. `.github/workflows/android-ci.yml` runs offline policy, `testDebugUnitTest`, `lintDebug`, and `assembleDebug`.
-- Branch/worktree: `main` at `52b7f09dba0bf56c10d908029f16ebbbe07d0a7f`, pushed to `origin/main`; only worktree is the project checkout.
-- Dirty state: The API 27 theme user edit was committed in `52b7f09` because it fixes CI. Current changes: replace the widget's unsupported divider `View` with supported `TextView`; update this log.
-- CI evidence: Run `41696412574`, job `126128028374`: unit tests passed; lint failed with 1 `RemoteViewLayout` error because `widget_hydrapush.xml` includes a plain `View`, unsupported by `RemoteViews`. The layout uses `RemoteViews` at `HydraPushWidget.kt:57`. Replacing only the divider class with `TextView` preserves its appearance and uses an allowed RemoteViews type.
-- Previous CI evidence: Run `41693871266` failed AAPT resource linking because `values-v27/themes.xml` omitted its parent. Fixed in `52b7f09` with `android:Theme.Material.Light.NoActionBar`.
-- Local verification: Gradle fails before task execution with `Unable to establish loopback connection` across JDK 17/21/25 and sandbox/escalated runs. `gh` token is invalid. Use Actions for build evidence.
-- Remaining: Commit/push the lint fix; verify `testDebugUnitTest`, `lintDebug`, `assembleDebug` pass; download artifact; copy and verify APK on Desktop; record final state.
-- Exact next action: Commit/push the one-line widget layout fix and poll the resulting Actions run.
+- Objective: Deliver a smaller ARM64 release APK for the user's Honor X9d (Android 16 / MagicOS 10) to Desktop.
+- Stage: User approved a new ARM64 release CI build and small workflow change after the universal debug APK was verified and copied.
+- Requirements: Preserve app behavior/theme edits; exclude non-ARM64 native libraries from release; use existing local test signing key without uploading it; deliver to `C:\Users\Administrator\Desktop`.
+- Architecture: Single-module Android app (`:app`). CI runs offline policy, `testDebugUnitTest`, `lintDebug`, and `assembleDebug`.
+- Branch/worktree: `main` at `51952165499fb8b380c5316b0db9fb3fe0072868`, matching `origin/main`. Only worktree is this checkout.
+- Changes: `52b7f09` sets a valid explicit parent for the API 27 theme, preserving the user's theme edits. `5195216` changes the widget divider from unsupported `View` to `TextView` for Android `RemoteViews`.
+- CI: GitHub Actions run `41696882720` succeeded on `main`; job `126129645349` reports `testDebugUnitTest`, `lintDebug`, and `assembleDebug` ✅. Artifact `HydraPush-debug` is 16.6 MB, SHA-256 `b3b724bddeae5ea30c85b9769670efa467b4c170dd20b6c75966b9e32bcd2d0a`, artifact ID `13261672604`.
+- Local build: Gradle could not start on this host (`Unable to establish loopback connection`) across JDK 17/21/25. CI is the observed build evidence.
+- Delivery evidence: Fresh public GitHub API confirmed run/commit/job success. GitHub connector tools return Unknown tool, but escalated `gh` works. Downloaded exact run artifact to ignored `build/delivery-41696882720`; APK matches existing Downloads copy, SHA-256 `a298e7c05df5c83b37b53bd6f12d76f8ae2d88eb6e496b4bbe9bc2fc65e74d23`. Desktop `HydraPush-1.0.0-universal-debug.apk` is a verified identical copy (17,903,063 bytes).
+- Packaging evidence: aapt confirms package `com.hydrapush.tracker`, 1.0.0/code1, minSdk26, targetSdk36, debug; ARM64/ARMv7/x86/x86_64 native libraries. Unused ABIs total only 43,084 bytes, so size difference is predominantly debug dependencies. apksigner verification and zipalign 16 KB checks pass. CI debug certificate SHA-256 `0baa121951c9977dbb8118e916e0c3b68b595f2ae7b39443137d68324914ac60`; existing local test certificate `f362708af345c607f91700a453893cf0c50731a60b38fcc13be85d0e579e3c58` differs. Do not imply update compatibility with the CI debug APK.
+- Design/plan: Restrict release native libraries to ARM64 in existing Gradle release block; retain debug ABI support. Add release unit tests/lint/build and unsigned artifact to existing workflow. Commit/push; observe exact run; download unsigned APK; align/sign locally using existing debug key; verify package/version/ABI/signature/alignment and compare non-signature entries; copy/hash-check Desktop; remove only this session's superseded universal Desktop copy after successful ARM64 delivery.
+- Local build retry: JDK17 escalated `assembleDebug -Pandroid.injected.build.abi=arm64-v8a` still fails before tasks with loopback IOException. Use CI; do not retry unrelated host debugging. Graphify skipped: bounded two-file packaging change with no architecture investigation.
+- Remaining: Commit/push packaging changes, verify CI, sign/check/deliver ARM64 release; keep signing and real-phone acceptance distinct.
+- Exact next action: Review minimal build/workflow diff, commit/push, record new run ID.

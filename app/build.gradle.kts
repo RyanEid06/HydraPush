@@ -35,6 +35,7 @@ android {
 
   buildTypes {
     release {
+      ndk { abiFilters += "arm64-v8a" }
       isCrunchPngs = false
       isMinifyEnabled = false
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
