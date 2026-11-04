@@ -8,9 +8,9 @@
     <application
         android:allowBackup="false"
         android:fullBackupContent="false"
-        android:icon="@drawable/ic_launcher_hydrapush"
+        android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
-        android:roundIcon="@drawable/ic_launcher_hydrapush"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.HydraPush">
         <activity
@@ -43,6 +43,13 @@
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
                 <action android:name="com.hydrapush.tracker.ACTION_LOG_WATER_QUICK" />
                 <action android:name="com.hydrapush.tracker.ACTION_LOG_PUSHUP_QUICK" />
+                <action android:name="com.hydrapush.tracker.ACTION_TOGGLE_CREATINE" />
+                <action android:name="com.hydrapush.tracker.ACTION_TOGGLE_PROTEIN" />
+                <action android:name="com.hydrapush.tracker.ACTION_REFRESH_WIDGET_MIDNIGHT" />
+                <action android:name="android.intent.action.DATE_CHANGED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"

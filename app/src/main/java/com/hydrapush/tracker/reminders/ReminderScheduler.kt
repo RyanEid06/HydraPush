@@ -10,12 +10,14 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.hydrapush.tracker.MainActivity
 import com.hydrapush.tracker.R
 import com.hydrapush.tracker.data.preferences.TrackerSettings
 import com.hydrapush.tracker.data.preferences.TrackerSettingsStore
+import com.hydrapush.tracker.data.repository.TrackerRepository
 import java.util.Calendar
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -67,7 +69,7 @@ object ReminderScheduler {
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) ==
             PackageManager.PERMISSION_GRANTED
 
-    fun scheduleAll(context: Context, settings: TrackerSettings) {
+    fun scheduleAll(context: Context, settings: TrackerSettings, forceReschedule: Boolean = false) {
         createNotificationChannels(context)
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
 
@@ -87,7 +89,9 @@ object ReminderScheduler {
                 context, alarmManager, ID_WATER,
                 intervalMillis = intervalMillis,
                 type = "water", title = "Time to hydrate",
-                message = "Drink a glass of water to keep your daily streak alive!"
+                message = "Drink a glass of water to keep your daily streak alive!",
+                signature = "water:$intervalHours",
+                forceReschedule = forceReschedule
             )
         } else {
             cancel(context, alarmManager, ID_WATER)
@@ -101,7 +105,9 @@ object ReminderScheduler {
                 context, alarmManager, ID_PUSHUP,
                 hour = hour, minute = minute,
                 type = "pushup", title = "Push-ups time",
-                message = "Log a set of push-ups toward your daily goal!"
+                message = "Log a set of push-ups toward your daily goal!",
+                signature = "pushup:$hour:$minute:${java.util.TimeZone.getDefault().id}",
+                forceReschedule = forceReschedule
             )
         } else {
             cancel(context, alarmManager, ID_PUSHUP)
@@ -115,7 +121,9 @@ object ReminderScheduler {
                 context, alarmManager, ID_CREATINE,
                 hour = hour, minute = minute,
                 type = "creatine", title = "Creatine reminder",
-                message = "Take your 5g daily creatine dose."
+                message = "Take your 5g daily creatine dose.",
+                signature = "creatine:$hour:$minute:${java.util.TimeZone.getDefault().id}",
+                forceReschedule = forceReschedule
             )
         } else {
             cancel(context, alarmManager, ID_CREATINE)
@@ -129,7 +137,9 @@ object ReminderScheduler {
                 context, alarmManager, ID_PROTEIN,
                 hour = hour, minute = minute,
                 type = "protein", title = "Protein Shake reminder",
-                message = "Time for your daily protein shake serving."
+                message = "Time for your daily protein shake serving.",
+                signature = "protein:$hour:$minute:${java.util.TimeZone.getDefault().id}",
+                forceReschedule = forceReschedule
             )
         } else {
             cancel(context, alarmManager, ID_PROTEIN)
@@ -143,8 +153,12 @@ object ReminderScheduler {
         intervalMillis: Long,
         type: String,
         title: String,
-        message: String
+        message: String,
+        signature: String,
+        forceReschedule: Boolean
     ) {
+        if (!shouldReschedule(context, requestCode, signature, forceReschedule)) return
+
         val intent = Intent(context, ReminderNotificationReceiver::class.java).apply {
             putExtra("type", type)
             putExtra("title", title)
@@ -173,6 +187,7 @@ object ReminderScheduler {
                 pendingIntent
             )
         }
+        persistSignature(context, requestCode, signature)
     }
 
     private fun scheduleDailyRepeating(
@@ -183,8 +198,12 @@ object ReminderScheduler {
         minute: Int,
         type: String,
         title: String,
-        message: String
+        message: String,
+        signature: String,
+        forceReschedule: Boolean
     ) {
+        if (!shouldReschedule(context, requestCode, signature, forceReschedule)) return
+
         val intent = Intent(context, ReminderNotificationReceiver::class.java).apply {
             putExtra("type", type)
             putExtra("title", title)
@@ -222,6 +241,7 @@ object ReminderScheduler {
                 pendingIntent
             )
         }
+        persistSignature(context, requestCode, signature)
     }
 
     private fun cancel(context: Context, alarmManager: AlarmManager, requestCode: Int) {
@@ -236,7 +256,39 @@ object ReminderScheduler {
             alarmManager.cancel(pendingIntent)
             pendingIntent.cancel()
         }
+        context.getSharedPreferences("reminder_schedule_state", Context.MODE_PRIVATE)
+            .edit().remove(requestCode.toString()).apply()
     }
+
+    private fun shouldReschedule(
+        context: Context,
+        requestCode: Int,
+        signature: String,
+        forceReschedule: Boolean
+    ): Boolean {
+        val preferences = context.getSharedPreferences("reminder_schedule_state", Context.MODE_PRIVATE)
+        val existing = PendingIntent.getBroadcast(
+            context,
+            requestCode,
+            pendingIntentIntent(requestCode, context),
+            PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
+        )
+        val key = requestCode.toString()
+        if (!forceReschedule && existing != null && preferences.getString(key, null) == signature) {
+            return false
+        }
+        return true
+    }
+
+    private fun persistSignature(context: Context, requestCode: Int, signature: String) {
+        context.getSharedPreferences("reminder_schedule_state", Context.MODE_PRIVATE)
+            .edit().putString(requestCode.toString(), signature).apply()
+    }
+
+    private fun pendingIntentIntent(requestCode: Int, context: Context): Intent =
+        Intent(context, ReminderNotificationReceiver::class.java).apply {
+            putExtra("id", requestCode)
+        }
 }
 
 class ReminderNotificationReceiver : BroadcastReceiver() {
@@ -246,35 +298,39 @@ class ReminderNotificationReceiver : BroadcastReceiver() {
         val title = intent.getStringExtra("title") ?: "HydraPush Reminder"
         val message = intent.getStringExtra("message") ?: "Time for your daily fitness habits"
         val id = intent.getIntExtra("id", 1000)
-
-        val channelId = when (type) {
-            "water" -> ReminderScheduler.CHANNEL_WATER
-            "pushup" -> ReminderScheduler.CHANNEL_PUSHUPS
-            else -> ReminderScheduler.CHANNEL_SUPPLEMENTS
+        if (type !in setOf("water", "pushup", "creatine", "protein")) return
+        val pendingResult = goAsync()
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                if (!TrackerRepository.getInstance(context).shouldShowReminder(type)) return@launch
+                val channelId = when (type) {
+                    "water" -> ReminderScheduler.CHANNEL_WATER
+                    "pushup" -> ReminderScheduler.CHANNEL_PUSHUPS
+                    else -> ReminderScheduler.CHANNEL_SUPPLEMENTS
+                }
+                val openAppIntent = Intent(context, MainActivity::class.java).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                }
+                val contentIntent = PendingIntent.getActivity(
+                    context, 0, openAppIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+                val notification = NotificationCompat.Builder(context, channelId)
+                    .setSmallIcon(R.drawable.ic_notification_hydra)
+                    .setContentTitle(title)
+                    .setContentText(message)
+                    .setAutoCancel(true)
+                    .setContentIntent(contentIntent)
+                    .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                    .build()
+                val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                nm.notify(id, notification)
+            } catch (error: Exception) {
+                Log.w("HydraPushReminder", "Unable to process reminder", error)
+            } finally {
+                pendingResult.finish()
+            }
         }
-
-        val openAppIntent = Intent(context, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-        }
-        val pendingIntent = PendingIntent.getActivity(
-            context,
-            0,
-            openAppIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val notification = NotificationCompat.Builder(context, channelId)
-            .setSmallIcon(R.drawable.ic_notification_hydra)
-            .setContentTitle(title)
-            .setContentText(message)
-            .setAutoCancel(true)
-            .setContentIntent(pendingIntent)
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-            .build()
-
-        if (!ReminderScheduler.notificationsAllowed(context)) return
-        val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        nm.notify(id, notification)
     }
 }
 
@@ -290,7 +346,9 @@ class BootCompletedReceiver : BroadcastReceiver() {
                 try {
                     val store = TrackerSettingsStore(context.applicationContext)
                     val settings = store.settings.first()
-                    ReminderScheduler.scheduleAll(context.applicationContext, settings)
+                    ReminderScheduler.scheduleAll(context.applicationContext, settings, forceReschedule = true)
+                } catch (error: Exception) {
+                    Log.w("HydraPushReminder", "Unable to restore reminder schedule", error)
                 } finally {
                     pendingResult.finish()
                 }

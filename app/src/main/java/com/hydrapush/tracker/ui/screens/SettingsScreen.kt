@@ -20,6 +20,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -33,6 +36,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import com.hydrapush.tracker.BuildConfig
 import com.hydrapush.tracker.R
 import com.hydrapush.tracker.data.preferences.TrackerSettings
 import com.hydrapush.tracker.data.repository.TrackerRepository
@@ -43,6 +47,7 @@ import com.hydrapush.tracker.ui.theme.HydraColors
 import java.time.LocalDate
 import kotlinx.coroutines.launch
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SettingsScreen(
     repo: TrackerRepository,
@@ -65,6 +70,15 @@ fun SettingsScreen(
     var showImportConfirmDialog by remember { mutableStateOf(false) }
     var pendingReminderEnableTarget by remember { mutableStateOf<String?>(null) }
     var notificationsAllowed by remember { mutableStateOf(ReminderScheduler.notificationsAllowed(context)) }
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) notificationsAllowed = ReminderScheduler.notificationsAllowed(context)
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     // Android 13+ notification permission. A reminder is persisted as ON only after permission exists.
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
@@ -116,7 +130,8 @@ fun SettingsScreen(
                 if (result.isSuccess) {
                     snackbarHostState.showSnackbar("Backup exported successfully!")
                 } else {
-                    snackbarHostState.showSnackbar("Export failed: ${result.exceptionOrNull()?.message}")
+                    android.util.Log.e("HydraPush", "Backup export failed", result.exceptionOrNull())
+                    snackbarHostState.showSnackbar("Could not export the backup. Choose a writable location and try again.")
                 }
             }
         }
@@ -170,9 +185,9 @@ fun SettingsScreen(
                 Spacer(modifier = Modifier.height(10.dp))
 
                 SettingRow(
-                    iconRes = R.drawable.water_icon,
+                    iconRes = R.drawable.ic_habit_water,
                     title = "Water Goal",
-                    value = "${String.format("%,d", settings.waterGoalMl)} ml",
+                    value = "${String.format(java.util.Locale.getDefault(), "%,d", settings.waterGoalMl)} ml",
                     onClick = {
                         goalInput = settings.waterGoalMl.toString()
                         goalError = null
@@ -180,10 +195,10 @@ fun SettingsScreen(
                     }
                 )
 
-                HorizontalDivider(color = Color(0xFFF0F5F5), modifier = Modifier.padding(vertical = 4.dp))
+                HorizontalDivider(color = Color(0xFFF0F5F5), modifier = Modifier.padding(start = 50.dp, top = 4.dp, bottom = 4.dp))
 
                 SettingRow(
-                    iconRes = R.drawable.pushup_icon,
+                    iconRes = R.drawable.ic_habit_pushup,
                     title = "Push-up Goal",
                     value = "${settings.pushUpGoalReps} reps",
                     onClick = {
@@ -206,12 +221,7 @@ fun SettingsScreen(
                     modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Image(
-                        painter = painterResource(R.drawable.water_icon),
-                        contentDescription = null,
-                        modifier = Modifier.size(22.dp),
-                        contentScale = ContentScale.Fit
-                    )
+                    SettingIcon(iconRes = R.drawable.ic_habit_water)
                     Spacer(modifier = Modifier.width(10.dp))
                     Text(
                         text = "Water",
@@ -236,19 +246,14 @@ fun SettingsScreen(
                     }
                 }
 
-                HorizontalDivider(color = Color(0xFFF0F5F5), modifier = Modifier.padding(vertical = 4.dp))
+                HorizontalDivider(color = Color(0xFFF0F5F5), modifier = Modifier.padding(start = 50.dp, top = 4.dp, bottom = 4.dp))
 
                 // Push-ups (Permanently On)
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Image(
-                        painter = painterResource(R.drawable.pushup_icon),
-                        contentDescription = null,
-                        modifier = Modifier.size(22.dp),
-                        contentScale = ContentScale.Fit
-                    )
+                    SettingIcon(iconRes = R.drawable.ic_habit_pushup)
                     Spacer(modifier = Modifier.width(10.dp))
                     Text(
                         text = "Push-ups",
@@ -273,19 +278,14 @@ fun SettingsScreen(
                     }
                 }
 
-                HorizontalDivider(color = Color(0xFFF0F5F5), modifier = Modifier.padding(vertical = 4.dp))
+                HorizontalDivider(color = Color(0xFFF0F5F5), modifier = Modifier.padding(start = 50.dp, top = 4.dp, bottom = 4.dp))
 
                 // Creatine (Toggleable)
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Image(
-                        painter = painterResource(R.drawable.creatine_icon),
-                        contentDescription = null,
-                        modifier = Modifier.size(22.dp),
-                        contentScale = ContentScale.Fit
-                    )
+                    SettingIcon(iconRes = R.drawable.ic_habit_creatine)
                     Spacer(modifier = Modifier.width(10.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
@@ -320,19 +320,14 @@ fun SettingsScreen(
                     )
                 }
 
-                HorizontalDivider(color = Color(0xFFF0F5F5), modifier = Modifier.padding(vertical = 4.dp))
+                HorizontalDivider(color = Color(0xFFF0F5F5), modifier = Modifier.padding(start = 50.dp, top = 4.dp, bottom = 4.dp))
 
                 // Protein Shake (Toggleable)
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Image(
-                        painter = painterResource(R.drawable.protein_icon),
-                        contentDescription = null,
-                        modifier = Modifier.size(22.dp),
-                        contentScale = ContentScale.Fit
-                    )
+                    SettingIcon(iconRes = R.drawable.ic_habit_protein)
                     Spacer(modifier = Modifier.width(10.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
@@ -377,9 +372,9 @@ fun SettingsScreen(
 
                 // Water Reminder
                 ReminderRow(
-                    iconRes = R.drawable.water_icon,
+                    iconRes = R.drawable.ic_habit_water,
                     title = "Water Reminder",
-                    subtitle = if (notificationsAllowed) "Every ${settings.waterReminderIntervalHours} hours" else "Permission required",
+                    subtitle = "Every ${settings.waterReminderIntervalHours} hours" + if (notificationsAllowed) "" else " · Permission required",
                     enabled = settings.waterReminderEnabled && notificationsAllowed,
                     onToggle = { isEnabled ->
                         handleReminderToggle(
@@ -400,13 +395,13 @@ fun SettingsScreen(
                     }
                 )
 
-                HorizontalDivider(color = Color(0xFFF0F5F5), modifier = Modifier.padding(vertical = 4.dp))
+                HorizontalDivider(color = Color(0xFFF0F5F5), modifier = Modifier.padding(start = 50.dp, top = 4.dp, bottom = 4.dp))
 
                 // Push-up Reminder
                 ReminderRow(
-                    iconRes = R.drawable.pushup_icon,
+                    iconRes = R.drawable.ic_habit_pushup,
                     title = "Push-up Reminder",
-                    subtitle = if (notificationsAllowed) formatMinutesToTime(settings.pushUpReminderTimeMinutes) else "Permission required",
+                    subtitle = formatMinutesToTime(settings.pushUpReminderTimeMinutes) + if (notificationsAllowed) "" else " · Permission required",
                     enabled = settings.pushUpReminderEnabled && notificationsAllowed,
                     onToggle = { isEnabled ->
                         handleReminderToggle(
@@ -426,16 +421,15 @@ fun SettingsScreen(
                     }
                 )
 
-                HorizontalDivider(color = Color(0xFFF0F5F5), modifier = Modifier.padding(vertical = 4.dp))
+                HorizontalDivider(color = Color(0xFFF0F5F5), modifier = Modifier.padding(start = 50.dp, top = 4.dp, bottom = 4.dp))
 
                 // Creatine Reminder
                 ReminderRow(
-                    iconRes = R.drawable.creatine_icon,
+                    iconRes = R.drawable.ic_habit_creatine,
                     title = "Creatine Reminder",
                     subtitle = when {
                         !settings.creatineEnabled -> "Habit deactivated"
-                        !notificationsAllowed -> "Permission required"
-                        else -> formatMinutesToTime(settings.creatineReminderTimeMinutes)
+                        else -> formatMinutesToTime(settings.creatineReminderTimeMinutes) + if (notificationsAllowed) "" else " · Permission required"
                     },
                     enabled = settings.creatineEnabled && settings.creatineReminderEnabled && notificationsAllowed,
                     isHabitActive = settings.creatineEnabled,
@@ -459,16 +453,15 @@ fun SettingsScreen(
                     }
                 )
 
-                HorizontalDivider(color = Color(0xFFF0F5F5), modifier = Modifier.padding(vertical = 4.dp))
+                HorizontalDivider(color = Color(0xFFF0F5F5), modifier = Modifier.padding(start = 50.dp, top = 4.dp, bottom = 4.dp))
 
                 // Protein Shake Reminder
                 ReminderRow(
-                    iconRes = R.drawable.protein_icon,
+                    iconRes = R.drawable.ic_habit_protein,
                     title = "Protein Shake Reminder",
                     subtitle = when {
                         !settings.proteinEnabled -> "Habit deactivated"
-                        !notificationsAllowed -> "Permission required"
-                        else -> formatMinutesToTime(settings.proteinReminderTimeMinutes)
+                        else -> formatMinutesToTime(settings.proteinReminderTimeMinutes) + if (notificationsAllowed) "" else " · Permission required"
                     },
                     enabled = settings.proteinEnabled && settings.proteinReminderEnabled && notificationsAllowed,
                     isHabitActive = settings.proteinEnabled,
@@ -500,69 +493,16 @@ fun SettingsScreen(
                 GroupHeader(icon = Icons.Default.Storage, title = "Data & Backup")
                 Spacer(modifier = Modifier.height(10.dp))
 
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            val defaultName = "hydrapush_backup_${LocalDate.now()}.json"
-                            exportLauncher.launch(defaultName)
-                        }
-                        .padding(vertical = 12.dp)
-                        .testTag("export_backup_button"),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Upload,
-                        contentDescription = "Export",
-                        tint = HydraColors.PrimaryTeal,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Text(
-                        text = "Export Backup",
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 14.sp,
-                        color = HydraColors.Navy,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Icon(
-                        imageVector = Icons.Default.ChevronRight,
-                        contentDescription = null,
-                        tint = HydraColors.Muted
-                    )
+                Box(Modifier.testTag("export_backup_button")) {
+                    SettingRow(icon = Icons.Default.Upload, title = "Export Backup", value = "", onClick = {
+                        exportLauncher.launch("hydrapush_backup_${LocalDate.now()}.json")
+                    })
                 }
-
-                HorizontalDivider(color = Color(0xFFF0F5F5), modifier = Modifier.padding(vertical = 4.dp))
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            importLauncher.launch(arrayOf("application/json", "*/*"))
-                        }
-                        .padding(vertical = 12.dp)
-                        .testTag("import_backup_button"),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Download,
-                        contentDescription = "Import",
-                        tint = HydraColors.Lime,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Text(
-                        text = "Import Backup",
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 14.sp,
-                        color = HydraColors.Navy,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Icon(
-                        imageVector = Icons.Default.ChevronRight,
-                        contentDescription = null,
-                        tint = HydraColors.Muted
-                    )
+                HorizontalDivider(color = HydraColors.Stroke, modifier = Modifier.padding(start = 50.dp))
+                Box(Modifier.testTag("import_backup_button")) {
+                    SettingRow(icon = Icons.Default.Download, title = "Import Backup", value = "", onClick = {
+                        importLauncher.launch(arrayOf("application/json", "*/*"))
+                    })
                 }
             }
 
@@ -576,7 +516,7 @@ fun SettingsScreen(
                 SettingRow(
                     icon = Icons.Default.PhoneAndroid,
                     title = "App Version",
-                    value = "v1.0.0",
+                    value = "v${BuildConfig.VERSION_NAME}",
                     onClick = { showAboutDialog = true }
                 )
             }
@@ -683,17 +623,15 @@ fun SettingsScreen(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clickable {
-                                        scope.launch { repo.updateSettings { it.copy(waterReminderIntervalHours = hours) } }
-                                        showTimeDialogTarget = null
+                                        customHour = hours
                                     }
                                     .padding(vertical = 8.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 RadioButton(
-                                    selected = settings.waterReminderIntervalHours == hours,
+                                    selected = customHour == hours,
                                     onClick = {
-                                        scope.launch { repo.updateSettings { it.copy(waterReminderIntervalHours = hours) } }
-                                        showTimeDialogTarget = null
+                                        customHour = hours
                                     }
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
@@ -707,7 +645,7 @@ fun SettingsScreen(
                         Spacer(modifier = Modifier.height(10.dp))
 
                         // Quick presets
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        FlowRow(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             listOf(
                                 "9:00 AM" to (9 * 60),
                                 "12:00 PM" to (12 * 60),
@@ -728,8 +666,7 @@ fun SettingsScreen(
                         Spacer(modifier = Modifier.height(14.dp))
 
                         // Hour / Minute custom selector
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
+                        FlowRow(
                             horizontalArrangement = Arrangement.Center,
                             modifier = Modifier.fillMaxWidth()
                         ) {
@@ -752,7 +689,7 @@ fun SettingsScreen(
                                 }
                             }
 
-                            Text(":", fontSize = 22.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 8.dp))
+                            Spacer(Modifier.width(12.dp))
 
                             // Minute
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -783,6 +720,7 @@ fun SettingsScreen(
                         scope.launch {
                             repo.updateSettings { s ->
                                 when (target) {
+                                    "water_interval" -> s.copy(waterReminderIntervalHours = customHour)
                                     "pushup_time" -> s.copy(pushUpReminderTimeMinutes = minutes)
                                     "creatine_time" -> s.copy(creatineReminderTimeMinutes = minutes)
                                     "protein_time" -> s.copy(proteinReminderTimeMinutes = minutes)
@@ -792,9 +730,9 @@ fun SettingsScreen(
                         }
                         showTimeDialogTarget = null
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = HydraColors.PrimaryTeal)
+                    colors = ButtonDefaults.buttonColors(containerColor = HydraColors.PrimaryTeal, contentColor = HydraColors.Navy)
                 ) {
-                    Text("Save Time")
+                    Text(if (target == "water_interval") "Save Interval" else "Save Time")
                 }
             },
             dismissButton = {
@@ -808,7 +746,7 @@ fun SettingsScreen(
     // Import confirmation dialog
     if (showImportConfirmDialog && pendingImportUri != null) {
         AlertDialog(
-            onDismissRequest = { showImportConfirmDialog = false },
+            onDismissRequest = { showImportConfirmDialog = false; pendingImportUri = null },
             title = { Text("Confirm Backup Restore", fontWeight = FontWeight.Bold, color = HydraColors.Navy) },
             text = {
                 Text(
@@ -828,11 +766,12 @@ fun SettingsScreen(
                             if (res.isSuccess) {
                                 snackbarHostState.showSnackbar("Backup restored successfully!")
                             } else {
-                                snackbarHostState.showSnackbar("Restore failed: ${res.exceptionOrNull()?.message}")
+                                android.util.Log.e("HydraPush", "Backup restore failed", res.exceptionOrNull())
+                                snackbarHostState.showSnackbar("Could not restore this backup. Check that it is a valid HydraPush backup and try again.")
                             }
                         }
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = HydraColors.PrimaryTeal)
+                    colors = ButtonDefaults.buttonColors(containerColor = HydraColors.PrimaryTeal, contentColor = HydraColors.Navy)
                 ) {
                     Text("Restore Backup")
                 }
@@ -860,7 +799,7 @@ fun SettingsScreen(
                         modifier = Modifier.size(24.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("HydraPush v1.0.0", fontWeight = FontWeight.Bold)
+                    Text("HydraPush v${BuildConfig.VERSION_NAME}", fontWeight = FontWeight.Bold)
                 }
             },
             text = {
@@ -886,6 +825,14 @@ fun SettingsScreen(
                 TextButton(onClick = { showAboutDialog = false }) { Text("Close") }
             }
         )
+    }
+}
+
+@Composable
+private fun SettingIcon(icon: ImageVector? = null, iconRes: Int? = null) {
+    Box(Modifier.size(40.dp).background(HydraColors.SurfaceAqua, RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) {
+        if (iconRes != null) Image(painterResource(iconRes), null, Modifier.size(24.dp), contentScale = ContentScale.Fit)
+        else if (icon != null) Icon(icon, null, Modifier.size(22.dp), tint = HydraColors.DeepTeal)
     }
 }
 
@@ -923,35 +870,12 @@ private fun SettingRow(
             .padding(vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        if (iconRes != null) {
-            Image(
-                painter = painterResource(iconRes),
-                contentDescription = null,
-                modifier = Modifier.size(20.dp),
-                contentScale = ContentScale.Fit
-            )
-        } else if (icon != null) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = HydraColors.PrimaryTeal,
-                modifier = Modifier.size(20.dp)
-            )
+        SettingIcon(icon, iconRes)
+        Spacer(Modifier.width(10.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = HydraColors.Navy)
+            if (value.isNotEmpty()) Text(value, fontSize = 13.sp, color = HydraColors.DeepTeal)
         }
-        Spacer(modifier = Modifier.width(10.dp))
-        Text(
-            text = title,
-            fontWeight = FontWeight.SemiBold,
-            fontSize = 14.sp,
-            color = HydraColors.Navy,
-            modifier = Modifier.weight(1f)
-        )
-        Text(
-            text = value,
-            fontSize = 13.sp,
-            color = HydraColors.PrimaryTeal,
-            fontWeight = FontWeight.Medium
-        )
         Spacer(modifier = Modifier.width(6.dp))
         Icon(
             imageVector = Icons.Default.ChevronRight,
@@ -978,17 +902,14 @@ private fun ReminderRow(
             .padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Image(
-            painter = painterResource(iconRes),
-            contentDescription = null,
-            modifier = Modifier.size(22.dp),
-            contentScale = ContentScale.Fit
-        )
+        SettingIcon(iconRes = iconRes)
         Spacer(modifier = Modifier.width(10.dp))
         Column(
             modifier = Modifier
                 .weight(1f)
-                .clickable(enabled = enabled && isHabitActive, onClick = onClickSchedule)
+                .heightIn(min = 48.dp)
+                .clickable(enabled = isHabitActive, onClick = onClickSchedule)
+                .testTag("schedule_$title")
         ) {
             Text(
                 text = title,
@@ -999,10 +920,11 @@ private fun ReminderRow(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = subtitle,
+                    modifier = Modifier.weight(1f),
                     fontSize = 12.sp,
-                    color = if (enabled && isHabitActive) HydraColors.PrimaryTeal else HydraColors.Muted
+                    color = if (isHabitActive) HydraColors.DeepTeal else HydraColors.Muted
                 )
-                if (enabled && isHabitActive) {
+                if (isHabitActive) {
                     Spacer(modifier = Modifier.width(4.dp))
                     Icon(
                         imageVector = Icons.Default.Edit,
@@ -1014,6 +936,7 @@ private fun ReminderRow(
             }
         }
         Switch(
+            modifier = Modifier.testTag("reminder_switch_$title"),
             checked = enabled && isHabitActive,
             onCheckedChange = onToggle,
             enabled = isHabitActive,

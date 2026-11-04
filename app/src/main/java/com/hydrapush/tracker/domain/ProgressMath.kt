@@ -56,6 +56,42 @@ data class Achievement(
 )
 
 object ProgressMath {
+    fun eligibleHistory(
+        days: List<DailyMetrics>,
+        today: LocalDate,
+        habit: String? = null
+    ): List<DailyMetrics> = days.asSequence()
+        .filter { !it.day.isAfter(today) }
+        .filter { habitIsEnabled(it, habit) }
+        .filter { it.day != today || isMet(it, habit) }
+        .sortedBy { it.day }
+        .toList()
+
+    fun completionPercent(
+        days: List<DailyMetrics>,
+        today: LocalDate,
+        habit: String? = null
+    ): Int? {
+        val eligible = eligibleHistory(days, today, habit)
+        if (eligible.isEmpty()) return null
+        return eligible.count { isMet(it, habit) } * 100 / eligible.size
+    }
+
+    private fun isMet(day: DailyMetrics, habit: String?): Boolean = when (habit) {
+        "Water" -> day.waterMet
+        "Push-ups" -> day.pushUpsMet
+        "Creatine" -> day.creatineMet
+        "Protein" -> day.proteinMet
+        null -> day.perfect
+        else -> false
+    }
+
+    private fun habitIsEnabled(day: DailyMetrics, habit: String?): Boolean = when (habit) {
+        "Creatine" -> day.creatineRequired
+        "Protein" -> day.proteinRequired
+        else -> true
+    }
+
     /**
      * Today being incomplete does not erase an active streak earned through yesterday.
      * If yesterday was missed, current streak is 0 until today becomes perfect.

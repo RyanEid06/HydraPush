@@ -2,114 +2,224 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_root"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
+    android:layout_height="wrap_content"
     android:orientation="vertical"
     android:background="@drawable/widget_background"
-    android:padding="12dp">
+    android:padding="8dp">
 
-    <!-- Header Row -->
     <LinearLayout
         android:id="@+id/widget_header"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center_vertical">
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
 
         <ImageView
-            android:layout_width="20dp"
-            android:layout_height="20dp"
-            android:src="@drawable/ic_launcher_hydrapush" />
+            android:layout_width="26dp"
+            android:layout_height="26dp"
+            android:contentDescription="@null"
+            android:src="@drawable/ic_hydra_drop" />
 
-        <TextView
-            android:id="@+id/widget_title"
+        <LinearLayout
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
             android:layout_marginStart="6dp"
-            android:text="HydraPush"
-            android:textColor="#153139"
-            android:textStyle="bold"
-            android:textSize="14sp" />
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/widget_wordmark"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:singleLine="true"
+                android:text="HydraPush"
+                android:textColor="#153139"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:maxLines="2"
+                android:text="Your progress &amp; performance"
+                android:textColor="#526A70"
+                android:textSize="10sp" />
+        </LinearLayout>
 
         <TextView
             android:id="@+id/widget_streak"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="0-day streak"
-            android:textColor="#FF7D4A"
-            android:textStyle="bold"
-            android:textSize="12sp" />
+            android:layout_marginEnd="2dp"
+            android:gravity="center"
+            android:singleLine="true"
+            android:text="0 🔥"
+            android:textColor="#B64B32"
+            android:textSize="13sp"
+            android:textStyle="bold" />
+
     </LinearLayout>
 
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="1dp"
-        android:layout_marginTop="6dp"
-        android:layout_marginBottom="6dp"
-        android:background="#E5F3F4" />
-
-    <!-- Content Row: Water & Pushups -->
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
         android:orientation="horizontal">
 
-        <!-- Water Section -->
         <LinearLayout
+            android:id="@+id/widget_water_card"
             android:layout_width="0dp"
-            android:layout_height="match_parent"
+            android:layout_height="wrap_content"
+            android:minHeight="88dp"
+            android:layout_marginEnd="3dp"
             android:layout_weight="1"
+            android:background="@drawable/widget_progress_water_card"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center_vertical"
             android:orientation="vertical"
-            android:gravity="center_vertical">
+            android:padding="7dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <ImageView
+                    android:layout_width="22dp"
+                    android:layout_height="22dp"
+                    android:contentDescription="@null"
+                    android:src="@drawable/ic_habit_water" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="5dp"
+                    android:text="Water"
+                    android:textColor="#153139"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
 
             <TextView
-                android:id="@+id/widget_water_text"
-                android:layout_width="wrap_content"
+                android:id="@+id/widget_water_total"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:layout_marginTop="3dp"
+                android:ellipsize="end"
+                android:singleLine="true"
                 android:text="0 / 2500 ml"
-                android:textColor="#0CC5BB"
-                android:textStyle="bold"
-                android:textSize="12sp" />
+                android:textColor="#008F8A"
+                android:textSize="10sp"
+                android:textStyle="bold" />
 
-            <Button
-                android:id="@+id/widget_water_btn"
-                android:layout_width="wrap_content"
-                android:layout_height="48dp"
-                android:layout_marginTop="4dp"
-                android:text="+250 ml"
-                android:textSize="11sp"
-                android:textColor="#07373B"
-                android:backgroundTint="#E8FAF9" />
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="3dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <ProgressBar
+                    android:id="@+id/widget_water_progress"
+                    style="?android:attr/progressBarStyleHorizontal"
+                    android:layout_width="0dp"
+                    android:layout_height="6dp"
+                    android:layout_weight="1"
+                    android:indeterminate="false"
+                    android:max="100"
+                    android:progress="0"
+                    android:progressDrawable="@drawable/widget_progress_water" />
+
+                <TextView
+                    android:id="@+id/widget_water_percent"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="4dp"
+                    android:text="0%"
+                    android:textColor="#153139"
+                    android:textSize="10sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
         </LinearLayout>
 
-        <!-- Push-ups Section -->
         <LinearLayout
+            android:id="@+id/widget_pushup_card"
             android:layout_width="0dp"
-            android:layout_height="match_parent"
+            android:layout_height="wrap_content"
+            android:minHeight="88dp"
+            android:layout_marginStart="3dp"
             android:layout_weight="1"
+            android:background="@drawable/widget_progress_pushup_card"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center_vertical"
             android:orientation="vertical"
-            android:gravity="center_vertical">
+            android:padding="7dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <ImageView
+                    android:layout_width="22dp"
+                    android:layout_height="22dp"
+                    android:contentDescription="@null"
+                    android:src="@drawable/ic_habit_pushup" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="5dp"
+                    android:text="Push-ups"
+                    android:textColor="#153139"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
 
             <TextView
-                android:id="@+id/widget_pushup_text"
-                android:layout_width="wrap_content"
+                android:id="@+id/widget_pushup_total"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:layout_marginTop="3dp"
+                android:ellipsize="end"
+                android:singleLine="true"
                 android:text="0 / 100 reps"
-                android:textColor="#8BD70F"
-                android:textStyle="bold"
-                android:textSize="12sp" />
+                android:textColor="#5B9600"
+                android:textSize="10sp"
+                android:textStyle="bold" />
 
-            <Button
-                android:id="@+id/widget_pushup_btn"
-                android:layout_width="wrap_content"
-                android:layout_height="48dp"
-                android:layout_marginTop="4dp"
-                android:text="+10 reps"
-                android:textSize="11sp"
-                android:textColor="#153139"
-                android:backgroundTint="#F3FCE9" />
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="3dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <ProgressBar
+                    android:id="@+id/widget_pushup_progress"
+                    style="?android:attr/progressBarStyleHorizontal"
+                    android:layout_width="0dp"
+                    android:layout_height="6dp"
+                    android:layout_weight="1"
+                    android:indeterminate="false"
+                    android:max="100"
+                    android:progress="0"
+                    android:progressDrawable="@drawable/widget_progress_pushup" />
+
+                <TextView
+                    android:id="@+id/widget_pushup_percent"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="4dp"
+                    android:text="0%"
+                    android:textColor="#153139"
+                    android:textSize="10sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
         </LinearLayout>
     </LinearLayout>
-
 </LinearLayout>

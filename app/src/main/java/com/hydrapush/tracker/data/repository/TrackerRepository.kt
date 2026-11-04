@@ -104,14 +104,17 @@ class TrackerRepository private constructor(private val appContext: Context) {
      * using historical configuration revisions without fabricating completion.
      */
     suspend fun reconcileToday() = mutex.withLock {
-        val date = today()
+        reconcileTodayLocked(LocalDate.parse(today()))
+    }
+
+    private suspend fun reconcileTodayLocked(date: LocalDate): DailySnapshotEntity {
+        val dateString = date.toString()
         val currentSettings = settings.first()
         val recent = dao.mostRecentDay()
 
         if (recent != null) {
             var cursor = LocalDate.parse(recent).plusDays(1)
-            val end = LocalDate.parse(date)
-            while (cursor.isBefore(end)) {
+            while (cursor.isBefore(date)) {
                 val dayStr = cursor.toString()
                 if (dao.getSnapshot(dayStr) == null) {
                     val rev = dao.getRevisionOnOrBefore(dayStr)
@@ -131,21 +134,36 @@ class TrackerRepository private constructor(private val appContext: Context) {
             }
         }
 
-        if (dao.getSnapshot(date) == null) {
-            dao.insertSnapshot(
-                DailySnapshotEntity(
-                    day = date,
-                    waterGoalMl = currentSettings.waterGoalMl,
-                    pushUpGoalReps = currentSettings.pushUpGoalReps,
-                    creatineRequired = currentSettings.creatineEnabled,
-                    proteinRequired = currentSettings.proteinEnabled,
-                    creatineDone = false,
-                    proteinDone = false
-                )
+        var snapshot = dao.getSnapshot(dateString)
+        if (snapshot == null) {
+            snapshot = DailySnapshotEntity(
+                day = dateString,
+                waterGoalMl = currentSettings.waterGoalMl,
+                pushUpGoalReps = currentSettings.pushUpGoalReps,
+                creatineRequired = currentSettings.creatineEnabled,
+                proteinRequired = currentSettings.proteinEnabled
             )
+            dao.insertSnapshot(snapshot)
+        } else if (
+            snapshot.waterGoalMl != currentSettings.waterGoalMl ||
+            snapshot.pushUpGoalReps != currentSettings.pushUpGoalReps ||
+            snapshot.creatineRequired != currentSettings.creatineEnabled ||
+            snapshot.proteinRequired != currentSettings.proteinEnabled
+        ) {
+            snapshot = snapshot.copy(
+                waterGoalMl = currentSettings.waterGoalMl,
+                pushUpGoalReps = currentSettings.pushUpGoalReps,
+                creatineRequired = currentSettings.creatineEnabled,
+                proteinRequired = currentSettings.proteinEnabled
+            )
+            dao.upsertSnapshot(snapshot)
+        }
+
+        val latestRevision = dao.getRevisionOnOrBefore(dateString)
+        if (latestRevision == null || !latestRevision.matches(currentSettings)) {
             dao.insertRevision(
                 ConfigurationRevisionEntity(
-                    effectiveLocalDay = date,
+                    effectiveLocalDay = dateString,
                     waterGoalMl = currentSettings.waterGoalMl,
                     pushUpGoalReps = currentSettings.pushUpGoalReps,
                     creatineRequired = currentSettings.creatineEnabled,
@@ -154,43 +172,60 @@ class TrackerRepository private constructor(private val appContext: Context) {
             )
         }
 
-        checkAndPersistAchievements()
+        checkAndPersistAchievements(dateString)
+        return snapshot
     }
+
+    private fun ConfigurationRevisionEntity.matches(settings: TrackerSettings): Boolean =
+        waterGoalMl == settings.waterGoalMl &&
+            pushUpGoalReps == settings.pushUpGoalReps &&
+            creatineRequired == settings.creatineEnabled &&
+            proteinRequired == settings.proteinEnabled
 
 
     suspend fun addWater(amount: Int): Long {
         require(amount in 1..5000) { "Water entry must be between 1 and 5,000 ml" }
-        reconcileToday()
-        val entryId = dao.insertWater(WaterEntryEntity(day = today(), amountMl = amount))
-        checkAndPersistAchievements()
-        HydraPushAppWidgetProvider.updateAllWidgets(appContext)
-        return entryId
+        return mutex.withLock {
+            val date = today()
+            reconcileTodayLocked(LocalDate.parse(date))
+            val entryId = dao.insertWater(WaterEntryEntity(day = date, amountMl = amount))
+            checkAndPersistAchievements(date)
+            HydraPushAppWidgetProvider.updateAllWidgets(appContext)
+            entryId
+        }
     }
 
     suspend fun addSet(reps: Int): Long {
         require(reps in 1..1000) { "Set must be between 1 and 1,000 reps" }
-        reconcileToday()
-        val setId = dao.insertPushUpSet(PushUpSetEntity(day = today(), reps = reps))
-        checkAndPersistAchievements()
-        HydraPushAppWidgetProvider.updateAllWidgets(appContext)
-        return setId
+        return mutex.withLock {
+            val date = today()
+            reconcileTodayLocked(LocalDate.parse(date))
+            val setId = dao.insertPushUpSet(PushUpSetEntity(day = date, reps = reps))
+            checkAndPersistAchievements(date)
+            HydraPushAppWidgetProvider.updateAllWidgets(appContext)
+            setId
+        }
     }
 
-    suspend fun undoWater(entryId: Long) {
-        dao.removeWaterToday(entryId, today())
-        checkAndPersistAchievements()
+    suspend fun undoWater(entryId: Long) = mutex.withLock {
+        val date = today()
+        reconcileTodayLocked(LocalDate.parse(date))
+        dao.removeWaterToday(entryId, date)
+        checkAndPersistAchievements(date)
         HydraPushAppWidgetProvider.updateAllWidgets(appContext)
     }
 
-    suspend fun removeSet(setId: Long) {
-        dao.removePushUpSetToday(setId, today())
-        checkAndPersistAchievements()
+    suspend fun removeSet(setId: Long) = mutex.withLock {
+        val date = today()
+        reconcileTodayLocked(LocalDate.parse(date))
+        dao.removePushUpSetToday(setId, date)
+        checkAndPersistAchievements(date)
         HydraPushAppWidgetProvider.updateAllWidgets(appContext)
     }
 
     suspend fun setSupplementDone(creatine: Boolean, done: Boolean) = mutex.withLock {
-        val date = today()
-        val current = dao.getSnapshot(date) ?: return@withLock
+        val date = LocalDate.parse(today())
+        val current = reconcileTodayLocked(date)
         if (creatine && !current.creatineRequired) return@withLock
         if (!creatine && !current.proteinRequired) return@withLock
 
@@ -198,30 +233,64 @@ class TrackerRepository private constructor(private val appContext: Context) {
             if (creatine) current.copy(creatineDone = done)
             else current.copy(proteinDone = done)
         )
-        checkAndPersistAchievements()
+        checkAndPersistAchievements(date.toString())
         HydraPushAppWidgetProvider.updateAllWidgets(appContext)
+    }
+
+    suspend fun toggleSupplement(creatine: Boolean) = mutex.withLock {
+        val date = LocalDate.parse(today())
+        val current = reconcileTodayLocked(date)
+        if (creatine && !current.creatineRequired) return@withLock
+        if (!creatine && !current.proteinRequired) return@withLock
+
+        dao.upsertSnapshot(
+            if (creatine) current.copy(creatineDone = !current.creatineDone)
+            else current.copy(proteinDone = !current.proteinDone)
+        )
+        checkAndPersistAchievements(date.toString())
+        HydraPushAppWidgetProvider.updateAllWidgets(appContext)
+    }
+
+    suspend fun shouldShowReminder(type: String): Boolean = mutex.withLock {
+        if (!ReminderScheduler.notificationsAllowed(appContext)) return@withLock false
+        val date = LocalDate.parse(today())
+        val snapshot = reconcileTodayLocked(date)
+        val settingsNow = settings.first()
+        when (type) {
+            "water" -> settingsNow.waterReminderEnabled &&
+                dao.getAllWater().filter { it.day == date.toString() }.sumOf { it.amountMl } < snapshot.waterGoalMl
+            "pushup" -> settingsNow.pushUpReminderEnabled &&
+                dao.getAllPushUpSets().filter { it.day == date.toString() }.sumOf { it.reps } < snapshot.pushUpGoalReps
+            "creatine" -> settingsNow.creatineEnabled && settingsNow.creatineReminderEnabled && !snapshot.creatineDone
+            "protein" -> settingsNow.proteinEnabled && settingsNow.proteinReminderEnabled && !snapshot.proteinDone
+            else -> false
+        }
     }
 
     suspend fun updateSettings(transform: (TrackerSettings) -> TrackerSettings) = mutex.withLock {
         val priorSettings = settings.first()
         val next = transform(priorSettings)
-        settingsStore.save(next)
+        val date = LocalDate.parse(today())
+        val dateString = date.toString()
+        val current = reconcileTodayLocked(date)
+        val requirementChanged = priorSettings.waterGoalMl != next.waterGoalMl ||
+            priorSettings.pushUpGoalReps != next.pushUpGoalReps ||
+            priorSettings.creatineEnabled != next.creatineEnabled ||
+            priorSettings.proteinEnabled != next.proteinEnabled
 
-        val date = today()
-        val priorSnapshot = dao.getSnapshot(date)
-        if (priorSnapshot != null) {
+        settingsStore.save(next)
+        if (requirementChanged) {
             dao.upsertSnapshot(
-                priorSnapshot.copy(
+                current.copy(
                     waterGoalMl = next.waterGoalMl,
                     pushUpGoalReps = next.pushUpGoalReps,
                     creatineRequired = next.creatineEnabled,
                     proteinRequired = next.proteinEnabled
                 )
             )
-        } else {
-            dao.insertSnapshot(
-                DailySnapshotEntity(
-                    day = date,
+            dao.insertRevision(
+                ConfigurationRevisionEntity(
+                    effectiveLocalDay = dateString,
                     waterGoalMl = next.waterGoalMl,
                     pushUpGoalReps = next.pushUpGoalReps,
                     creatineRequired = next.creatineEnabled,
@@ -230,21 +299,11 @@ class TrackerRepository private constructor(private val appContext: Context) {
             )
         }
 
-        dao.insertRevision(
-            ConfigurationRevisionEntity(
-                effectiveLocalDay = date,
-                waterGoalMl = next.waterGoalMl,
-                pushUpGoalReps = next.pushUpGoalReps,
-                creatineRequired = next.creatineEnabled,
-                proteinRequired = next.proteinEnabled
-            )
-        )
-
         ReminderScheduler.scheduleAll(appContext, next)
         HydraPushAppWidgetProvider.updateAllWidgets(appContext)
     }
 
-    private suspend fun checkAndPersistAchievements() {
+    private suspend fun checkAndPersistAchievements(todayString: String) {
         val allSnapshots = dao.getAllSnapshots()
         val allWater = dao.getAllWater().groupBy { it.day }
         val allPushups = dao.getAllPushUpSets().groupBy { it.day }
@@ -264,7 +323,6 @@ class TrackerRepository private constructor(private val appContext: Context) {
         }
 
         val evaluated = ProgressMath.evaluateAchievements(dayMetrics)
-        val todayStr = today()
         val unlockedIds = evaluated.filter { it.isUnlocked }.map { it.id }.toSet()
         val existingAchievements = dao.getAllAchievements()
 
@@ -274,7 +332,7 @@ class TrackerRepository private constructor(private val appContext: Context) {
                 AchievementEntity(
                     achievementId = ach.id,
                     unlockedAtEpochMs = System.currentTimeMillis(),
-                    sourceDay = ach.unlockedDate ?: todayStr
+                    sourceDay = ach.unlockedDate ?: todayString
                 )
             )
         }
@@ -288,17 +346,16 @@ class TrackerRepository private constructor(private val appContext: Context) {
     }
 
     suspend fun exportBackup(uri: Uri): Result<Unit> = runCatching {
-        val snapshots = dao.getAllSnapshots()
-        val water = dao.getAllWater()
-        val pushups = dao.getAllPushUpSets()
-        val revisions = dao.getAllRevisions()
-        val achievements = dao.getAllAchievements()
-        val currentSettings = settings.first()
-
-        val json = BackupManager.createBackupJson(
-            snapshots, water, pushups, revisions, achievements, currentSettings
-        )
-
+        val json = mutex.withLock {
+            BackupManager.createBackupJson(
+                dao.getAllSnapshots(),
+                dao.getAllWater(),
+                dao.getAllPushUpSets(),
+                dao.getAllRevisions(),
+                dao.getAllAchievements(),
+                settings.first()
+            )
+        }
         appContext.contentResolver.openOutputStream(uri)?.use { os ->
             os.write(json.toByteArray(Charsets.UTF_8))
             os.flush()
@@ -329,6 +386,17 @@ class TrackerRepository private constructor(private val appContext: Context) {
         val json = readBackupText(uri)
         val payload = BackupManager.parseAndValidate(json)
 
+        val importedSettings = if (ReminderScheduler.notificationsAllowed(appContext)) {
+            payload.settings
+        } else {
+            payload.settings.copy(
+                waterReminderEnabled = false,
+                pushUpReminderEnabled = false,
+                creatineReminderEnabled = false,
+                proteinReminderEnabled = false
+            )
+        }
+
         mutex.withLock {
             // Keep memory copy of current state for atomic rollback
             val priorSnapshots = dao.getAllSnapshots()
@@ -346,7 +414,8 @@ class TrackerRepository private constructor(private val appContext: Context) {
                     revisions = payload.revisions,
                     achievements = payload.achievements
                 )
-                settingsStore.save(payload.settings)
+                settingsStore.save(importedSettings)
+                reconcileTodayLocked(LocalDate.parse(today()))
             } catch (e: Exception) {
                 // Rollback to prior data
                 dao.restoreFullDatabase(
@@ -361,8 +430,9 @@ class TrackerRepository private constructor(private val appContext: Context) {
             }
         }
 
-        reconcileToday()
-        ReminderScheduler.scheduleAll(appContext, payload.settings)
+        mutex.withLock {
+            ReminderScheduler.scheduleAll(appContext, settings.first())
+        }
         HydraPushAppWidgetProvider.updateAllWidgets(appContext)
     }
 }

@@ -79,4 +79,37 @@ class ProgressMathTest {
         assertEquals(3, ProgressMath.currentHabitStreak(days, d, "Water"))
         assertEquals(0, ProgressMath.currentHabitStreak(days, d, "Push-ups"))
     }
+
+    @Test
+    fun eligibleHistoryExcludesFutureAndUnfinishedTodayForSelectedHabit() {
+        val days = listOf(
+            day(d.minusDays(1), 100, 100, true, true),
+            day(d, 100, 100, true, true),
+            day(d.plusDays(1), 2500, 100, true, true)
+        )
+
+        assertEquals(listOf(d.minusDays(1)), ProgressMath.eligibleHistory(days, d, "Water").map { it.day })
+        assertEquals(0, ProgressMath.completionPercent(days, d, "Water"))
+    }
+
+    @Test
+    fun completionPercentIncludesTodayOnlyWhenSelectedHabitIsMet() {
+        val past = day(d.minusDays(1), 100, 100, true, true)
+        val todayIncomplete = day(d, 100, 100, true, true)
+        val todayComplete = todayIncomplete.copy(waterMl = 2500)
+
+        assertNull(ProgressMath.completionPercent(listOf(todayIncomplete), d, "Water"))
+        assertEquals(100, ProgressMath.completionPercent(listOf(todayComplete), d, "Water"))
+        assertEquals(0, ProgressMath.completionPercent(listOf(past, todayIncomplete), d, "Water"))
+        assertEquals(50, ProgressMath.completionPercent(listOf(past, todayComplete), d, "Water"))
+    }
+
+    @Test
+    fun disabledOptionalHabitIsNotIncludedInCompletionDenominator() {
+        val disabledToday = day(d, 0, 0, cr = false)
+
+        assertTrue(ProgressMath.eligibleHistory(listOf(disabledToday), d, "Creatine").isEmpty())
+        assertNull(ProgressMath.completionPercent(listOf(disabledToday), d, "Creatine"))
+        assertNull(ProgressMath.completionPercent(emptyList(), d, "Protein"))
+    }
 }

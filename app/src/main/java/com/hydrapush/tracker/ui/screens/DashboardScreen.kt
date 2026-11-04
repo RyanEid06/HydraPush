@@ -7,6 +7,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -30,6 +32,8 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -45,11 +49,15 @@ import com.hydrapush.tracker.ui.theme.HydraColors
 import java.time.LocalDate
 import kotlin.math.min
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun DashboardScreen(
     repository: TrackerRepository,
     today: DayView?,
+    localToday: LocalDate,
     days: List<DayView>,
     onNavigateToStats: () -> Unit = {}
 ) {
@@ -60,7 +68,34 @@ fun DashboardScreen(
     var inputAmount by remember { mutableStateOf("") }
     var dialogError by remember { mutableStateOf<String?>(null) }
 
-    val localToday = remember { LocalDate.now() }
+    var showTodayLogs by remember { mutableStateOf(false) }
+    var undoMessage by remember { mutableStateOf<Job?>(null) }
+    fun showUndo(message: String, undo: suspend () -> Unit) {
+        undoMessage?.cancel()
+        snackbarHostState.currentSnackbarData?.dismiss()
+        undoMessage = scope.launch {
+            if (snackbarHostState.showSnackbar(message, "Undo", duration = SnackbarDuration.Short) == SnackbarResult.ActionPerformed) {
+                try { undo() }
+                catch (cancelled: CancellationException) { throw cancelled }
+                catch (error: Exception) {
+                    android.util.Log.e("HydraPush", "Undo failed", error)
+                    snackbarHostState.showSnackbar("Could not undo the entry. Please try Today's logs.")
+                }
+            }
+        }
+    }
+    fun persist(action: suspend () -> Unit) {
+        scope.launch {
+            try { action() }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (error: Exception) {
+                android.util.Log.e("HydraPush", "Entry update failed", error)
+                undoMessage?.cancel()
+                snackbarHostState.currentSnackbarData?.dismiss()
+                snackbarHostState.showSnackbar("Could not save the change. Please try again.")
+            }
+        }
+    }
     val metrics = today?.metrics
     val streak = remember(days, localToday) {
         ProgressMath.currentPerfectStreak(days.map { it.metrics }, localToday)
@@ -92,25 +127,18 @@ fun DashboardScreen(
             } else {
                 // Main Top Row: Two Equal-Dominance Side-by-Side Cards
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     // 1. Water Card
                     WaterCard(
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(1f).fillMaxHeight(),
                         waterMl = metrics.waterMl,
                         goalMl = metrics.waterGoalMl,
                         onAddQuick = { amount ->
-                            scope.launch {
+                            persist {
                                 val entryId = repository.addWater(amount)
-                                val result = snackbarHostState.showSnackbar(
-                                    message = "Added $amount ml water",
-                                    actionLabel = "Undo",
-                                    duration = SnackbarDuration.Short
-                                )
-                                if (result == SnackbarResult.ActionPerformed) {
-                                    repository.undoWater(entryId)
-                                }
+                                showUndo("Added $amount ml water") { repository.undoWater(entryId) }
                             }
                         },
                         onCustomClick = {
@@ -122,7 +150,7 @@ fun DashboardScreen(
 
                     // 2. Push-ups Card
                     PushUpCard(
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(1f).fillMaxHeight(),
                         reps = metrics.pushUpReps,
                         goalReps = metrics.pushUpGoalReps,
                         sets = today.sets.map { it.reps },
@@ -141,51 +169,58 @@ fun DashboardScreen(
                 val showProtein = today.snapshot.proteinRequired
 
                 if (showCreatine || showProtein) {
+                    BoxWithConstraints(Modifier.fillMaxWidth()) {
+                    val density = LocalDensity.current
+                    var contentHeight by remember(maxWidth, density.density, density.fontScale, showCreatine, showProtein) { mutableIntStateOf(0) }
+                    val minimumHeight = with(density) { contentHeight.toDp() }
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         if (showCreatine) {
                             SupplementCard(
-                                modifier = Modifier.weight(1f),
+                                modifier = Modifier.weight(1f).heightIn(min = minimumHeight),
+                                onContentHeight = { contentHeight = maxOf(contentHeight, it) },
                                 name = "Creatine",
                                 subtitle = "5 g daily",
-                                iconRes = R.drawable.creatine_icon,
+                                iconRes = R.drawable.ic_habit_creatine,
                                 isDone = today.snapshot.creatineDone,
                                 backgroundColor = HydraColors.SurfaceAqua,
                                 testTag = "creatine_card",
                                 onToggle = { done ->
-                                    scope.launch { repository.setSupplementDone(creatine = true, done = done) }
+                                    persist { repository.toggleSupplement(creatine = true) }
                                 }
                             )
                         }
                         if (showProtein) {
                             SupplementCard(
-                                modifier = Modifier.weight(1f),
+                                modifier = Modifier.weight(1f).heightIn(min = minimumHeight),
+                                onContentHeight = { contentHeight = maxOf(contentHeight, it) },
                                 name = "Protein Shake",
                                 subtitle = "1 serving (≈ 25–30 g)",
-                                iconRes = R.drawable.protein_icon,
+                                iconRes = R.drawable.ic_habit_protein,
                                 isDone = today.snapshot.proteinDone,
                                 backgroundColor = HydraColors.SurfaceCoral,
                                 testTag = "protein_card",
                                 onToggle = { done ->
-                                    scope.launch { repository.setSupplementDone(creatine = false, done = done) }
+                                    persist { repository.toggleSupplement(creatine = false) }
                                 }
                             )
                         }
+                    }
                     }
                     Spacer(modifier = Modifier.height(14.dp))
                 }
 
                 // Bottom Performance Summary Row: Streak Card + Daily Completion Card
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     // Streak Card
                     Card(
                         modifier = Modifier
-                            .weight(1.1f)
+                            .weight(1f).fillMaxHeight()
                             .clickable(onClick = onNavigateToStats)
                             .testTag("streak_card"),
                         shape = RoundedCornerShape(20.dp),
@@ -237,7 +272,7 @@ fun DashboardScreen(
                     // Daily Completion Card
                     Card(
                         modifier = Modifier
-                            .weight(0.9f)
+                            .weight(1f).fillMaxHeight()
                             .testTag("daily_completion_card"),
                         shape = RoundedCornerShape(20.dp),
                         colors = CardDefaults.cardColors(containerColor = Color.White),
@@ -250,7 +285,7 @@ fun DashboardScreen(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Column {
+                            Column(Modifier.weight(1f)) {
                                 Text(
                                     text = "Daily Completion",
                                     fontSize = 11.sp,
@@ -268,7 +303,7 @@ fun DashboardScreen(
 
                             // Mini progress circle with trophy icon
                             Box(
-                                modifier = Modifier.size(44.dp),
+                                modifier = Modifier.size(36.dp),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Canvas(modifier = Modifier.fillMaxSize()) {
@@ -297,6 +332,11 @@ fun DashboardScreen(
                 }
             }
 
+            if (today != null) {
+                TextButton(onClick = { showTodayLogs = true }, modifier = Modifier.fillMaxWidth().testTag("today_logs_button")) {
+                    Text("Today's logs · correct entries", color = HydraColors.DeepTeal)
+                }
+            }
             Spacer(modifier = Modifier.height(20.dp))
         }
 
@@ -305,6 +345,31 @@ fun DashboardScreen(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .padding(bottom = 16.dp)
+        )
+    }
+
+    if (showTodayLogs && today != null) {
+        AlertDialog(
+            onDismissRequest = { showTodayLogs = false },
+            title = { Text("Today's logs") },
+            text = {
+                LazyColumn(Modifier.fillMaxWidth().heightIn(max = 420.dp)) {
+                    if (today.waters.isEmpty() && today.sets.isEmpty()) item { Text("No entries yet today.") }
+                    items(today.waters, key = { "water_${it.id}" }) { entry ->
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Text("Water · ${entry.amountMl} ml", Modifier.weight(1f))
+                            TextButton(onClick = { persist { repository.undoWater(entry.id) } }) { Text("Remove") }
+                        }
+                    }
+                    items(today.sets, key = { "set_${it.id}" }) { entry ->
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Text("Push-ups · ${entry.reps} reps", Modifier.weight(1f))
+                            TextButton(onClick = { persist { repository.removeSet(entry.id) } }) { Text("Remove") }
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showTodayLogs = false }) { Text("Done") } }
         )
     }
 
@@ -349,7 +414,7 @@ fun DashboardScreen(
                         )
                     }
                     Spacer(modifier = Modifier.height(10.dp))
-                    Row(
+                    FlowRow(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
@@ -369,19 +434,14 @@ fun DashboardScreen(
                         if (amount == null || amount !in 1..5000) {
                             dialogError = "Enter an amount between 1 and 5,000 ml"
                         } else {
-                            scope.launch {
+                            persist {
                                 val entryId = repository.addWater(amount)
-                                val result = snackbarHostState.showSnackbar(
-                                    message = "Added $amount ml water",
-                                    actionLabel = "Undo",
-                                    duration = SnackbarDuration.Short
-                                )
-                                if (result == SnackbarResult.ActionPerformed) repository.undoWater(entryId)
+                                showUndo("Added $amount ml water") { repository.undoWater(entryId) }
                             }
                             showWaterDialog = false
                         }
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = HydraColors.PrimaryTeal),
+                    colors = ButtonDefaults.buttonColors(containerColor = HydraColors.PrimaryTeal, contentColor = HydraColors.Navy),
                     modifier = Modifier.testTag("save_water_button")
                 ) {
                     Text("Add Water")
@@ -436,7 +496,7 @@ fun DashboardScreen(
                         )
                     }
                     Spacer(modifier = Modifier.height(10.dp))
-                    Row(
+                    FlowRow(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
@@ -456,14 +516,9 @@ fun DashboardScreen(
                         if (reps == null || reps !in 1..1000) {
                             dialogError = "Enter reps between 1 and 1,000"
                         } else {
-                            scope.launch {
+                            persist {
                                 val setId = repository.addSet(reps)
-                                val result = snackbarHostState.showSnackbar(
-                                    message = "Added $reps reps",
-                                    actionLabel = "Undo",
-                                    duration = SnackbarDuration.Short
-                                )
-                                if (result == SnackbarResult.ActionPerformed) repository.removeSet(setId)
+                                showUndo("Added $reps reps") { repository.removeSet(setId) }
                             }
                             showPushUpDialog = false
                         }
@@ -486,6 +541,7 @@ fun DashboardScreen(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun WaterCard(
     modifier: Modifier = Modifier,
@@ -502,7 +558,7 @@ private fun WaterCard(
         colors = CardDefaults.cardColors(containerColor = HydraColors.SurfaceAqua),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
-        Box(modifier = Modifier.fillMaxWidth()) {
+        Box(modifier = Modifier.fillMaxSize()) {
             // Low-contrast decorative accent lines
             Canvas(modifier = Modifier.matchParentSize()) {
                 val path = Path().apply {
@@ -519,16 +575,16 @@ private fun WaterCard(
             }
 
             Column(
-                modifier = Modifier.padding(14.dp),
+                modifier = Modifier.fillMaxSize().padding(12.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 // Header Row: Drop Icon + Title + Subtitle
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.Top
                 ) {
                     Image(
-                        painter = painterResource(R.drawable.water_icon),
+                        painter = painterResource(R.drawable.ic_habit_water),
                         contentDescription = "Water Icon",
                         modifier = Modifier.size(32.dp)
                     )
@@ -627,16 +683,18 @@ private fun WaterCard(
                 Spacer(modifier = Modifier.height(14.dp))
 
                 // Quick add pill buttons (+150, +250, +500)
-                Row(
+                FlowRow(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    maxItemsInEachRow = 2
                 ) {
                     listOf(150, 250, 500).forEach { amount ->
                         Button(
                             onClick = { onAddQuick(amount) },
                             modifier = Modifier
                                 .weight(1f)
-                                .height(44.dp)
+                                .heightIn(min = 48.dp)
                                 .testTag("add_water_$amount"),
                             shape = RoundedCornerShape(12.dp),
                             colors = ButtonDefaults.buttonColors(
@@ -662,7 +720,7 @@ private fun WaterCard(
                     onClick = onCustomClick,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(44.dp)
+                        .heightIn(min = 48.dp)
                         .testTag("custom_water_button"),
                     shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = HydraColors.DeepTeal),
@@ -702,7 +760,7 @@ private fun PushUpCard(
         colors = CardDefaults.cardColors(containerColor = HydraColors.SurfaceLime),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
-        Box(modifier = Modifier.fillMaxWidth()) {
+        Box(modifier = Modifier.fillMaxSize()) {
             // Low-contrast decorative accent lines
             Canvas(modifier = Modifier.matchParentSize()) {
                 val path = Path().apply {
@@ -720,15 +778,15 @@ private fun PushUpCard(
             }
 
             Column(
-                modifier = Modifier.padding(14.dp)
+                modifier = Modifier.fillMaxSize().padding(12.dp)
             ) {
                 // Header Row: Runner Silhouette + Title + Subtitle
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.Top
                 ) {
                     Image(
-                        painter = painterResource(R.drawable.pushup_icon),
+                        painter = painterResource(R.drawable.ic_habit_pushup),
                         contentDescription = "Push-ups Icon",
                         modifier = Modifier.size(32.dp)
                     )
@@ -751,8 +809,8 @@ private fun PushUpCard(
                 Spacer(modifier = Modifier.height(18.dp))
 
                 // Reps count: e.g. 72 / 100 reps
-                Row(
-                    verticalAlignment = Alignment.Bottom,
+                Column(
+                    horizontalAlignment = Alignment.Start,
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
@@ -802,24 +860,25 @@ private fun PushUpCard(
                         .padding(horizontal = 8.dp, vertical = 6.dp),
                     contentAlignment = Alignment.CenterStart
                 ) {
-                    val setsText = if (sets.isEmpty()) "No sets yet" else sets.joinToString(" + ")
+                    val setsText = if (sets.isEmpty()) "No sets yet" else
+                        sets.take(3).joinToString(", ") + if (sets.size > 3) " + ${sets.size - 3} more" else ""
                     Text(
                         text = setsText,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = HydraColors.Navy,
-                        maxLines = 2
                     )
                 }
 
                 Spacer(modifier = Modifier.height(14.dp))
 
+                Spacer(Modifier.weight(1f))
                 // + Add Set button (prominent lime green button)
                 Button(
                     onClick = onAddSetClick,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(44.dp)
+                        .heightIn(min = 48.dp)
                         .testTag("add_set_button"),
                     shape = RoundedCornerShape(14.dp),
                     colors = ButtonDefaults.buttonColors(
@@ -848,6 +907,7 @@ private fun PushUpCard(
 @Composable
 private fun SupplementCard(
     modifier: Modifier = Modifier,
+    onContentHeight: (Int) -> Unit,
     name: String,
     subtitle: String,
     iconRes: Int,
@@ -864,59 +924,18 @@ private fun SupplementCard(
         colors = CardDefaults.cardColors(containerColor = backgroundColor),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
-        Column(
-            modifier = Modifier.padding(14.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Image(
-                    painter = painterResource(iconRes),
-                    contentDescription = name,
-                    modifier = Modifier.size(34.dp),
-                    contentScale = ContentScale.Fit
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = name,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 14.sp,
-                        color = HydraColors.Navy
-                    )
-                    Text(
-                        text = subtitle,
-                        fontSize = 11.sp,
-                        color = HydraColors.Muted
-                    )
-                }
-
-                // Checkbox status circle (minimum touch target)
-                Box(
-                    modifier = Modifier
-                        .size(28.dp)
-                        .background(
-                            color = if (isDone) Color(0xFFD7F5D4) else Color.White,
-                            shape = CircleShape
-                        )
-                        .border(
-                            width = 1.5.dp,
-                            color = if (isDone) Color(0xFF67C95B) else Color(0xFFD6E8E9),
-                            shape = CircleShape
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    if (isDone) {
-                        Icon(
-                            imageVector = Icons.Default.Check,
-                            contentDescription = "Done",
-                            tint = Color(0xFF279919),
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
+        Column(Modifier.fillMaxWidth().onSizeChanged { onContentHeight(it.height) }.padding(12.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Image(painterResource(iconRes), null, Modifier.size(30.dp), contentScale = ContentScale.Fit)
+                Box(Modifier.size(28.dp).background(if (isDone) Color(0xFFD7F5D4) else Color.White, CircleShape)
+                    .border(1.dp, HydraColors.Stroke, CircleShape), contentAlignment = Alignment.Center) {
+                    if (isDone) Icon(Icons.Default.Check, "Done", tint = HydraColors.DeepTeal, modifier = Modifier.size(20.dp))
                 }
             }
+            Spacer(Modifier.height(8.dp))
+            Text(name, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = HydraColors.Navy)
+            Text(subtitle, fontSize = 12.sp, color = HydraColors.Muted)
+            Text(if (isDone) "Done ✓" else "Mark done", fontSize = 12.sp, color = HydraColors.DeepTeal, fontWeight = FontWeight.Bold)
         }
     }
 }

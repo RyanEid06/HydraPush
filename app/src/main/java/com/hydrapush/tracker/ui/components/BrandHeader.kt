@@ -7,11 +7,18 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -28,52 +35,41 @@ fun BrandHeader(
     date: LocalDate = LocalDate.now()
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(72.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Image(
-                        painter = painterResource(R.drawable.ic_hydra_drop),
-                        contentDescription = "HydraPush Drop",
-                        modifier = Modifier.size(30.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "Hydra",
-                        color = Color(0xFF0F3E3B),
-                        fontSize = 25.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = "Push",
-                        color = HydraColors.PrimaryTeal,
-                        fontSize = 25.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+        val resources = LocalContext.current.resources
+        val runner = remember(resources) { BrandArtwork.runner(resources).asImageBitmap() }
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            val scale = LocalDensity.current.fontScale.coerceAtLeast(1f)
+            val runnerWidth = (maxWidth * .24f / scale).coerceAtLeast(48.dp)
+            Row(
+                modifier = Modifier.fillMaxWidth().heightIn(min = 80.dp).padding(vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Image(
+                            painterResource(R.drawable.ic_hydra_drop), "HydraPush",
+                            Modifier.size(28.dp)
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            buildAnnotatedString {
+                                withStyle(SpanStyle(color = HydraColors.DeepTeal)) { append("Hydra") }
+                                withStyle(SpanStyle(color = HydraColors.PrimaryTeal)) { append("Push") }
+                            },
+                            fontSize = 23.sp, fontWeight = FontWeight.Bold
+                        )
+                    }
+                    Text(subtitle, color = HydraColors.Muted, fontSize = 13.sp,
+                        modifier = Modifier.padding(start = 34.dp, top = 3.dp))
                 }
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = subtitle,
-                    color = HydraColors.Muted,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Normal
+                Image(
+                    runner, null,
+                    modifier = Modifier.width(runnerWidth)
+                        .heightIn(max = 92.dp),
+                    contentScale = ContentScale.Fit
                 )
             }
-
-            // Athlete runner decoration
-            Image(
-                painter = painterResource(R.drawable.header_runner),
-                contentDescription = null,
-                modifier = Modifier
-                    .width(96.dp)
-                    .height(68.dp),
-                contentScale = ContentScale.Fit
-            )
         }
 
         if (showDateBar) {
@@ -95,17 +91,14 @@ fun BrandHeader(
                     fontSize = 18.sp,
                     color = HydraColors.Navy
                 )
-                Text(
-                    text = "   |   ",
-                    color = Color(0xFFD6E8E9),
-                    fontSize = 16.sp
-                )
+                Spacer(Modifier.width(12.dp))
                 val formatter = DateTimeFormatter.ofPattern("EEE, MMM d")
                 Text(
                     text = date.format(formatter),
                     color = HydraColors.Muted,
                     fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.weight(1f)
                 )
             }
             Spacer(modifier = Modifier.height(14.dp))

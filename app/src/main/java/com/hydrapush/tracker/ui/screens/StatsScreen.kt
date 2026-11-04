@@ -22,10 +22,13 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material.icons.filled.LocalFireDepartment
-import androidx.compose.material.icons.filled.ShowChart
+import androidx.compose.material.icons.automirrored.filled.ShowChart
 import androidx.compose.material.icons.filled.TrackChanges
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -38,6 +41,9 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -55,6 +61,8 @@ import java.time.LocalDate
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import kotlin.math.max
+import kotlin.math.ceil
+import kotlinx.coroutines.flow.first
 
 @Composable
 fun StatsScreen(
@@ -62,11 +70,13 @@ fun StatsScreen(
     today: LocalDate,
     achievements: List<Achievement> = emptyList()
 ) {
-    var selectedTab by remember { mutableStateOf("Overview") }
-    var selectedRange by remember { mutableStateOf("7D") }
-    var showCalendarHistory by remember { mutableStateOf(false) }
+    var selectedTab by rememberSaveable { mutableStateOf("Overview") }
+    var selectedRange by rememberSaveable { mutableStateOf("7D") }
+    var showCalendarHistory by rememberSaveable { mutableStateOf(false) }
     var showAchievementsSheet by remember { mutableStateOf(false) }
     var selectedDayDetail by remember { mutableStateOf<DayView?>(null) }
+    val screenScrollState = rememberScrollState()
+    LaunchedEffect(showCalendarHistory) { screenScrollState.scrollTo(0) }
 
     val startDate = when (selectedRange) {
         "7D" -> today.minusDays(6)
@@ -94,144 +104,39 @@ fun StatsScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
+            .verticalScroll(screenScrollState)
             .padding(horizontal = 16.dp, vertical = 10.dp)
             .testTag("stats_screen")
     ) {
-        BrandHeader(
-            subtitle = "Your progress & performance",
-            showDateBar = false
-        )
-
-        // Title Row: "Stats" + Range Selector Pills (7D, 30D, 90D, All)
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = Icons.Default.Insights,
-                    contentDescription = null,
-                    tint = HydraColors.PrimaryTeal,
-                    modifier = Modifier.size(24.dp)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = "Stats",
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = HydraColors.Navy
-                )
-            }
-
-            // Range Pills
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                modifier = Modifier
-                    .background(Color(0xFFEBF6F6), RoundedCornerShape(12.dp))
-                    .padding(2.dp)
-            ) {
-                listOf("7D", "30D", "90D", "All").forEach { r ->
-                    val isSelected = selectedRange == r
-                    Box(
-                        modifier = Modifier
-                            .background(
-                                color = if (isSelected) HydraColors.PrimaryTeal else Color.Transparent,
-                                shape = RoundedCornerShape(10.dp)
-                            )
-                            .clickable { selectedRange = r }
-                            .padding(horizontal = 10.dp, vertical = 6.dp)
-                            .testTag("range_pill_$r")
-                    ) {
-                        Text(
-                            text = r,
-                            fontSize = 11.sp,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                            color = if (isSelected) Color.White else HydraColors.Navy
-                        )
-                    }
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(10.dp))
-
-        // Sub-Tabs Row: [Overview] [Water] [Push-ups]
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            listOf(
-                Triple("Overview", "Overview", null),
-                Triple("Water", "Water", R.drawable.water_icon),
-                Triple("Push-ups", "Push-ups", R.drawable.pushup_icon)
-            ).forEach { (id, label, iconRes) ->
-                val isSelected = selectedTab == id
-                val tabColor = when (id) {
-                    "Water" -> HydraColors.Aqua
-                    "Push-ups" -> HydraColors.Lime
-                    else -> HydraColors.PrimaryTeal
-                }
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .background(
-                            color = if (isSelected) tabColor else Color.White,
-                            shape = RoundedCornerShape(14.dp)
-                        )
-                        .border(
-                            width = 1.dp,
-                            color = if (isSelected) Color.Transparent else Color(0xFFD6E8E9),
-                            shape = RoundedCornerShape(14.dp)
-                        )
-                        .clickable {
-                            selectedTab = id
-                            showCalendarHistory = false
-                        }
-                        .padding(vertical = 11.dp)
-                        .testTag("stats_tab_$id"),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        if (iconRes != null) {
-                            Image(
-                                painter = painterResource(iconRes),
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp),
-                                contentScale = ContentScale.Fit
-                            )
-                            Spacer(modifier = Modifier.width(5.dp))
-                        }
-                        Text(
-                            text = label,
-                            fontSize = 12.sp,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
-                            color = if (isSelected) (if (id == "Push-ups") HydraColors.Navy else Color.White) else HydraColors.Navy
-                        )
-                    }
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(14.dp))
-
         if (showCalendarHistory) {
             CalendarHistoryView(
                 allDays = allDays,
+                today = today,
                 onBack = { showCalendarHistory = false },
                 onSelectDay = { dayView -> selectedDayDetail = dayView }
             )
         } else {
+            BrandHeader(subtitle = "Your progress & performance", showDateBar = false)
+            StatsTitleAndRange(selectedRange = selectedRange, onSelectRange = { selectedRange = it })
+            Spacer(modifier = Modifier.height(12.dp))
+            if (selectedTab != "Overview") {
+                StatsTabs(selectedTab = selectedTab, onSelectTab = {
+                    selectedTab = it
+                    showCalendarHistory = false
+                })
+                Spacer(modifier = Modifier.height(14.dp))
+            }
             when (selectedTab) {
                 "Overview" -> {
                     OverviewTabContent(
                         rangeDays = rangeDays,
+                        today = today,
                         streak = streak,
                         bestStreak = bestStreak,
                         achievements = achievements,
                         onOpenCalendar = { showCalendarHistory = true },
-                        onOpenAchievements = { showAchievementsSheet = true }
+                        onOpenAchievements = { showAchievementsSheet = true },
+                        onSelectTab = { selectedTab = it }
                     )
                 }
                 "Water" -> {
@@ -239,6 +144,7 @@ fun StatsScreen(
                         isWater = true,
                         rangeDays = rangeDays,
                         allDays = allDays,
+                        today = today,
                         selectedRange = selectedRange,
                         onOpenCalendar = { showCalendarHistory = true }
                     )
@@ -248,6 +154,7 @@ fun StatsScreen(
                         isWater = false,
                         rangeDays = rangeDays,
                         allDays = allDays,
+                        today = today,
                         selectedRange = selectedRange,
                         onOpenCalendar = { showCalendarHistory = true }
                     )
@@ -271,22 +178,27 @@ fun StatsScreen(
                 )
             },
             text = {
-                Column(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.fillMaxWidth().heightIn(max = 320.dp).verticalScroll(rememberScrollState())) {
                     val m = dayView.metrics
                     Text(
-                        text = if (m.perfect) "Perfect Day Completed" else "Incomplete Day",
+                        text = when {
+                            m.perfect -> "Perfect Day Completed"
+                            m.day == today -> "Today is in progress"
+                            m.day.isAfter(today) -> "Not applicable"
+                            else -> "Incomplete Day"
+                        },
                         fontWeight = FontWeight.Bold,
                         color = if (m.perfect) Color(0xFF279919) else HydraColors.Muted,
                         fontSize = 13.sp
                     )
                     Spacer(modifier = Modifier.height(10.dp))
                     Text(
-                        text = "Water: ${dayView.totalWater} / ${dayView.snapshot.waterGoalMl} ml (${if (m.waterMet) "Goal Hit" else "Missed"})",
+                        text = "Water: ${dayView.totalWater} / ${dayView.snapshot.waterGoalMl} ml (${if (m.waterMet) "Goal Hit" else if (m.day == today) "In progress" else "Missed"})",
                         fontSize = 13.sp
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = "Push-ups: ${dayView.totalReps} / ${dayView.snapshot.pushUpGoalReps} reps (${if (m.pushUpsMet) "Goal Hit" else "Missed"})",
+                        text = "Push-ups: ${dayView.totalReps} / ${dayView.snapshot.pushUpGoalReps} reps (${if (m.pushUpsMet) "Goal Hit" else if (m.day == today) "In progress" else "Missed"})",
                         fontSize = 13.sp
                     )
                     if (dayView.sets.isNotEmpty()) {
@@ -299,13 +211,13 @@ fun StatsScreen(
                     Spacer(modifier = Modifier.height(4.dp))
                     if (dayView.snapshot.creatineRequired) {
                         Text(
-                            text = "Creatine: ${if (dayView.snapshot.creatineDone) "Done ✓" else "Missed ✗"}",
+                            text = "Creatine: ${if (dayView.snapshot.creatineDone) "Done ✓" else if (m.day == today) "Not yet" else "Missed ✗"}",
                             fontSize = 13.sp
                         )
                     }
                     if (dayView.snapshot.proteinRequired) {
                         Text(
-                            text = "Protein Shake: ${if (dayView.snapshot.proteinDone) "Done ✓" else "Missed ✗"}",
+                            text = "Protein Shake: ${if (dayView.snapshot.proteinDone) "Done ✓" else if (m.day == today) "Not yet" else "Missed ✗"}",
                             fontSize = 13.sp
                         )
                     }
@@ -353,12 +265,7 @@ fun StatsScreen(
                                     ),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Icon(
-                                    imageVector = Icons.Default.EmojiEvents,
-                                    contentDescription = null,
-                                    tint = if (ach.isUnlocked) Color(0xFFD49E00) else HydraColors.Muted,
-                                    modifier = Modifier.size(20.dp)
-                                )
+                                Text(ach.iconEmoji, fontSize = 20.sp)
                             }
                             Spacer(modifier = Modifier.width(10.dp))
                             Column(modifier = Modifier.weight(1f)) {
@@ -373,6 +280,16 @@ fun StatsScreen(
                                     fontSize = 11.sp,
                                     color = HydraColors.Muted
                                 )
+                                if (!ach.isUnlocked) {
+                                    Text("${ach.progressCurrent} / ${ach.progressMax}", fontSize = 10.sp, color = HydraColors.Muted)
+                                    LinearProgressIndicator(
+                                        progress = { (ach.progressCurrent.toFloat() / ach.progressMax.coerceAtLeast(1)).coerceIn(0f, 1f) },
+                                        color = HydraColors.Lime,
+                                        trackColor = Color(0xFFE8F1F1),
+                                        modifier = Modifier.fillMaxWidth().height(5.dp),
+                                        strokeCap = StrokeCap.Round
+                                    )
+                                }
                             }
                             if (ach.isUnlocked) {
                                 Text(
@@ -397,33 +314,99 @@ fun StatsScreen(
 }
 
 @Composable
+private fun StatsTitleAndRange(selectedRange: String, onSelectRange: (String) -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.Insights, contentDescription = null, tint = HydraColors.PrimaryTeal, modifier = Modifier.size(24.dp))
+            Spacer(Modifier.width(6.dp))
+            Text("Stats", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = HydraColors.Navy)
+        }
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+            modifier = Modifier.background(Color(0xFFEBF6F6), RoundedCornerShape(14.dp)).padding(2.dp)
+        ) {
+            listOf("7D", "30D", "90D", "All").forEach { range ->
+                val isSelected = selectedRange == range
+                Box(
+                    modifier = Modifier
+                        .heightIn(min = 48.dp)
+                        .background(if (isSelected) HydraColors.PrimaryTeal else Color.Transparent, RoundedCornerShape(11.dp))
+                        .clickable { onSelectRange(range) }
+                        .semantics { selected = isSelected }
+                        .padding(horizontal = 8.dp)
+                        .testTag("range_pill_$range"),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(range, fontSize = 11.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium, color = if (isSelected) Color.White else HydraColors.Navy)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun StatsTabs(selectedTab: String, onSelectTab: (String) -> Unit) {
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        listOf(
+            Triple("Overview", "Overview", null),
+            Triple("Water", "Water", R.drawable.ic_habit_water),
+            Triple("Push-ups", "Push-ups", R.drawable.ic_habit_pushup)
+        ).forEach { (id, label, iconRes) ->
+            val isSelected = selectedTab == id
+            val tabColor = when (id) {
+                "Water" -> HydraColors.Aqua
+                "Push-ups" -> HydraColors.Lime
+                else -> HydraColors.PrimaryTeal
+            }
+            Row(
+                modifier = Modifier
+                    .weight(1f)
+                    .heightIn(min = 48.dp)
+                    .background(if (isSelected) tabColor else Color.White, RoundedCornerShape(14.dp))
+                    .border(1.dp, if (isSelected) Color.Transparent else Color(0xFFD6E8E9), RoundedCornerShape(14.dp))
+                    .clickable { onSelectTab(id) }
+                    .semantics { selected = isSelected }
+                    .testTag("stats_tab_$id"),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (iconRes != null) {
+                    Image(painterResource(iconRes), contentDescription = null, modifier = Modifier.size(16.dp), contentScale = ContentScale.Fit)
+                    Spacer(Modifier.width(5.dp))
+                }
+                Text(label, fontSize = 12.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
+                    color = if (isSelected && id != "Push-ups") Color.White else HydraColors.Navy)
+            }
+        }
+    }
+}
+
+@Composable
 private fun OverviewTabContent(
     rangeDays: List<DayView>,
+    today: LocalDate,
     streak: Int,
     bestStreak: Int,
     achievements: List<Achievement>,
     onOpenCalendar: () -> Unit,
-    onOpenAchievements: () -> Unit
+    onOpenAchievements: () -> Unit,
+    onSelectTab: (String) -> Unit
 ) {
-    // 4 KPI Cards - Completed days used for denominator so morning use does not penalize
-    val todayStr = LocalDate.now().toString()
-    val elapsedDays = rangeDays.filter { it.snapshot.day < todayStr }
-    val todayView = rangeDays.find { it.snapshot.day == todayStr }
-    val perfectDaysCount = rangeDays.count { it.metrics.perfect }
-    val completionPercent = if (elapsedDays.isEmpty()) {
-        if (todayView?.metrics?.perfect == true) "100%" else "—"
-    } else {
-        val completedPast = elapsedDays.count { it.metrics.perfect }
-        val pct = (completedPast * 100) / elapsedDays.size
-        "$pct%"
-    }
+    val metrics = remember(rangeDays) { rangeDays.map { it.metrics } }
+    val eligibleMetrics = remember(metrics, today) { ProgressMath.eligibleHistory(metrics, today) }
+    val completion = ProgressMath.completionPercent(metrics, today)?.let { "$it%" } ?: "—"
+    val perfectDaysCount = eligibleMetrics.count { it.perfect }
 
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min).testTag("stats_overview_kpis"),
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         KpiCard(
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.weight(1f).fillMaxHeight(),
             icon = Icons.Default.LocalFireDepartment,
             number = "$streak",
             label = "Day Streak",
@@ -431,7 +414,7 @@ private fun OverviewTabContent(
             accentColor = HydraColors.PerfectDayOrange
         )
         KpiCard(
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.weight(1f).fillMaxHeight(),
             icon = Icons.Default.EmojiEvents,
             number = "$bestStreak",
             label = "Best Streak",
@@ -439,15 +422,15 @@ private fun OverviewTabContent(
             accentColor = HydraColors.PushupLime
         )
         KpiCard(
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.weight(1f).fillMaxHeight(),
             icon = Icons.Default.TrackChanges,
-            number = completionPercent,
+            number = completion,
             label = "Goal Completion",
             bgColor = HydraColors.SurfaceAqua,
             accentColor = HydraColors.PrimaryTeal
         )
         KpiCard(
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.weight(1f).fillMaxHeight(),
             icon = Icons.Default.CalendarToday,
             number = "$perfectDaysCount",
             label = "Perfect Days",
@@ -457,9 +440,17 @@ private fun OverviewTabContent(
     }
 
     Spacer(modifier = Modifier.height(14.dp))
+    StatsTabs(selectedTab = "Overview", onSelectTab = onSelectTab)
+
+    Spacer(modifier = Modifier.height(14.dp))
 
     // Weekly Consistency Card (7 Vertical Bars)
     SectionCard(modifier = Modifier.fillMaxWidth()) {
+        val displayWeek = (6 downTo 0).map { today.minusDays(it.toLong()) }
+        val dateLabel = if (rangeDays.isNotEmpty()) {
+            val f = DateTimeFormatter.ofPattern("MMM d")
+            "${displayWeek.first().format(f)} – ${displayWeek.last().format(f)}"
+        } else ""
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -480,35 +471,21 @@ private fun OverviewTabContent(
                     color = HydraColors.Navy
                 )
             }
-            val last7 = rangeDays.takeLast(7)
-            val dateLabel = if (last7.isNotEmpty()) {
-                val f = DateTimeFormatter.ofPattern("MMM d")
-                "${LocalDate.parse(last7.first().snapshot.day).format(f)} – ${LocalDate.parse(last7.last().snapshot.day).format(f)}"
-            } else ""
-            Text(
-                text = dateLabel,
-                fontSize = 11.sp,
-                color = HydraColors.Muted
-            )
         }
+        if (dateLabel.isNotEmpty()) Text(dateLabel, fontSize = 11.sp, color = HydraColors.Muted)
 
         Spacer(modifier = Modifier.height(16.dp))
 
         // 7 Days Vertical Bars Chart
-        val last7Days = remember(rangeDays) { rangeDays.takeLast(7) }
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(120.dp),
+                .heightIn(min = 132.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.Bottom
         ) {
-            val daysToDisplay = if (last7Days.isEmpty()) {
-                (6 downTo 0).map { LocalDate.now().minusDays(it.toLong()) }
-            } else {
-                last7Days.map { LocalDate.parse(it.snapshot.day) }
-            }
-            val dayMap = last7Days.associateBy { LocalDate.parse(it.snapshot.day) }
+            val daysToDisplay = displayWeek
+            val dayMap = rangeDays.associateBy { LocalDate.parse(it.snapshot.day) }
 
             daysToDisplay.forEach { d ->
                 val dayView = dayMap[d]
@@ -517,10 +494,10 @@ private fun OverviewTabContent(
 
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.width(36.dp)
+                    modifier = Modifier.weight(1f)
                 ) {
                     Text(
-                        text = if (score > 0f) "$pct%" else "0%",
+                        text = if (d == today && dayView?.metrics?.perfect != true) "Now" else "$pct%",
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
                         color = if (score >= 1f) HydraColors.PrimaryTeal else HydraColors.Muted
@@ -536,7 +513,7 @@ private fun OverviewTabContent(
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .fillMaxHeight(score.coerceIn(0.04f, 1f))
+                                .fillMaxHeight(score.coerceIn(0f, 1f))
                                 .background(
                                     brush = Brush.verticalGradient(
                                         listOf(HydraColors.Lime, HydraColors.PrimaryTeal)
@@ -571,48 +548,44 @@ private fun OverviewTabContent(
 
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceAround
+            horizontalArrangement = Arrangement.spacedBy(2.dp)
         ) {
-            val eligibleDays = if (elapsedDays.isEmpty()) rangeDays else elapsedDays
-
             // Water
-            val waterHits = eligibleDays.count { it.metrics.waterMet }
-            val waterPct = if (eligibleDays.isNotEmpty()) (waterHits * 100) / eligibleDays.size else 0
+            val waterPct = ProgressMath.completionPercent(metrics, today, "Water")
             HabitRingIndicator(
+                modifier = Modifier.weight(1f),
                 label = "Water",
-                iconRes = R.drawable.water_icon,
+                iconRes = R.drawable.ic_habit_water,
                 percent = waterPct,
                 color = HydraColors.Aqua
             )
 
             // Push-ups
-            val pushHits = eligibleDays.count { it.metrics.pushUpsMet }
-            val pushPct = if (eligibleDays.isNotEmpty()) (pushHits * 100) / eligibleDays.size else 0
+            val pushPct = ProgressMath.completionPercent(metrics, today, "Push-ups")
             HabitRingIndicator(
+                modifier = Modifier.weight(1f),
                 label = "Push-ups",
-                iconRes = R.drawable.pushup_icon,
+                iconRes = R.drawable.ic_habit_pushup,
                 percent = pushPct,
                 color = HydraColors.Lime
             )
 
             // Creatine
-            val creatineReqDays = eligibleDays.filter { it.snapshot.creatineRequired }
-            val creatineHits = creatineReqDays.count { it.snapshot.creatineDone }
-            val creatinePct = if (creatineReqDays.isNotEmpty()) (creatineHits * 100) / creatineReqDays.size else null
+            val creatinePct = ProgressMath.completionPercent(metrics, today, "Creatine")
             HabitRingIndicator(
+                modifier = Modifier.weight(1f),
                 label = "Creatine",
-                iconRes = R.drawable.creatine_icon,
+                iconRes = R.drawable.ic_habit_creatine,
                 percent = creatinePct,
                 color = HydraColors.SecondaryBlue
             )
 
             // Protein
-            val proteinReqDays = eligibleDays.filter { it.snapshot.proteinRequired }
-            val proteinHits = proteinReqDays.count { it.snapshot.proteinDone }
-            val proteinPct = if (proteinReqDays.isNotEmpty()) (proteinHits * 100) / proteinReqDays.size else null
+            val proteinPct = ProgressMath.completionPercent(metrics, today, "Protein")
             HabitRingIndicator(
+                modifier = Modifier.weight(1f),
                 label = "Protein",
-                iconRes = R.drawable.protein_icon,
+                iconRes = R.drawable.ic_habit_protein,
                 percent = proteinPct,
                 color = HydraColors.ProteinCoral
             )
@@ -704,44 +677,74 @@ private fun HabitDrilldownTabContent(
     isWater: Boolean,
     rangeDays: List<DayView>,
     allDays: List<DayView>,
+    today: LocalDate,
     selectedRange: String,
     onOpenCalendar: () -> Unit
 ) {
     val habitName = if (isWater) "Water" else "Push-ups"
     val unit = if (isWater) "ml" else "reps"
     val themeColor = if (isWater) HydraColors.Aqua else HydraColors.Lime
+    val chartStart = when (selectedRange) {
+        "7D" -> today.minusDays(6)
+        "30D" -> today.minusDays(29)
+        "90D" -> today.minusDays(89)
+        else -> allDays.minOfOrNull { LocalDate.parse(it.snapshot.day) } ?: today.minusDays(6)
+    }
+    val chartHistory = remember(allDays, chartStart, today, isWater) {
+        val byDate = allDays.associateBy { it.snapshot.day }
+        (0L..java.time.temporal.ChronoUnit.DAYS.between(chartStart, today).coerceAtLeast(0)).map { offset ->
+            val date = chartStart.plusDays(offset)
+            val day = byDate[date.toString()]
+            val goal = day?.let { if (isWater) it.snapshot.waterGoalMl else it.snapshot.pushUpGoalReps }
+                ?: byDate[date.minusDays(1).toString()]?.let { if (isWater) it.snapshot.waterGoalMl else it.snapshot.pushUpGoalReps }
+                ?: allDays.firstOrNull()?.let { if (isWater) it.snapshot.waterGoalMl else it.snapshot.pushUpGoalReps }
+                ?: if (isWater) 2500 else 100
+            Triple(date, day?.let { if (isWater) it.totalWater else it.totalReps } ?: 0, goal)
+        }
+    }
+    val values = chartHistory.map { it.second }
+    val goals = chartHistory.map { it.third }
+    val latestGoal = goals.lastOrNull() ?: if (isWater) 2500 else 100
+    val unitStep = if (isWater) 500 else 10
+    val observedMax = maxOf(values.maxOrNull() ?: 0, goals.maxOrNull() ?: 0, unitStep)
+    val tickStep = ceil(observedMax * 1.12 / 4 / unitStep).toInt().coerceAtLeast(1) * unitStep
+    val scaleMax = tickStep * 4
+    val chartStateHolder = rememberSaveableStateHolder()
 
-    val totalValues = rangeDays.map { if (isWater) it.totalWater else it.totalReps }
+    val rangeMetrics = remember(rangeDays) { rangeDays.map { it.metrics } }
+    val eligibleDays = remember(rangeMetrics, today, habitName) { ProgressMath.eligibleHistory(rangeMetrics, today, habitName) }
+    val eligibleDates = remember(eligibleDays) { eligibleDays.mapTo(hashSetOf()) { it.day.toString() } }
+    val totalValues = rangeDays.filter { it.snapshot.day in eligibleDates }.map { if (isWater) it.totalWater else it.totalReps }
     val avg = if (totalValues.isNotEmpty()) totalValues.average().toInt() else 0
     val recordDay = rangeDays.maxByOrNull { if (isWater) it.totalWater else it.totalReps }
     val recordAmount = if (recordDay == null) 0 else if (isWater) recordDay.totalWater else recordDay.totalReps
 
-    val goalDaysHit = rangeDays.count { if (isWater) it.metrics.waterMet else it.metrics.pushUpsMet }
-    val totalEligible = rangeDays.size
+    val goalDaysHit = eligibleDays.count { if (isWater) it.waterMet else it.pushUpsMet }
+    val totalEligible = eligibleDays.size
 
-    val hitStreak = remember(allDays, isWater) {
-        ProgressMath.currentHabitStreak(allDays.map { it.metrics }, LocalDate.now(), habitName)
+    val hitStreak = remember(allDays, isWater, today) {
+        ProgressMath.currentHabitStreak(allDays.map { it.metrics }, today, habitName)
     }
 
-    val bestWeek = remember(allDays, isWater) {
-        ProgressMath.bestFullWeek(allDays.map { it.metrics }, habitName)
+    val bestWeek = remember(allDays, isWater, today) {
+        ProgressMath.bestFullWeek(ProgressMath.eligibleHistory(allDays.map { it.metrics }, today, habitName), habitName)
     }
 
     // 3 Top KPI Cards
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min).testTag("stats_drilldown_kpis"),
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         KpiCard(
-            modifier = Modifier.weight(1f),
-            iconRes = if (isWater) R.drawable.water_icon else R.drawable.pushup_icon,
-            number = "$avg $unit",
+            modifier = Modifier.weight(1f).fillMaxHeight(),
+            iconRes = if (isWater) R.drawable.ic_habit_water else R.drawable.ic_habit_pushup,
+            number = if (eligibleDays.isEmpty()) "—" else "$avg $unit",
             label = "Daily Average",
             bgColor = if (isWater) HydraColors.SurfaceAqua else HydraColors.SurfaceLime,
             accentColor = themeColor
         )
         KpiCard(
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.weight(1f).fillMaxHeight(),
             icon = Icons.Default.EmojiEvents,
             number = "$recordAmount $unit",
             label = "Best Day",
@@ -749,9 +752,9 @@ private fun HabitDrilldownTabContent(
             accentColor = Color(0xFFE5A110)
         )
         KpiCard(
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.weight(1f).fillMaxHeight(),
             icon = Icons.Default.CalendarToday,
-            number = "$goalDaysHit / $totalEligible",
+            number = if (totalEligible > 0) "$goalDaysHit / $totalEligible" else "—",
             label = "Goal Days",
             bgColor = Color.White,
             accentColor = HydraColors.Navy
@@ -760,128 +763,107 @@ private fun HabitDrilldownTabContent(
 
     Spacer(modifier = Modifier.height(14.dp))
 
-    // Chart Card with accurate Historical Goal Line for each day
+    // Chart Card with historical goal references and a readable value axis.
     SectionCard(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column {
-                Text(
-                    text = if (isWater) "Daily Intake" else "Daily Reps",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 15.sp,
-                    color = HydraColors.Navy
-                )
-                Text(
-                    text = "Tracked period ($selectedRange)",
-                    fontSize = 11.sp,
-                    color = HydraColors.Muted
-                )
-            }
-
-            // Legend
-            Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Text(
+                text = if (isWater) "Daily Intake" else "Daily Reps",
+                fontWeight = FontWeight.Bold,
+                fontSize = 15.sp,
+                color = HydraColors.Navy
+            )
+            Text("Tracked period ($selectedRange)", fontSize = 11.sp, color = HydraColors.Muted)
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     modifier = Modifier.size(8.dp).background(themeColor, CircleShape)
                 )
                 Spacer(modifier = Modifier.width(4.dp))
                 Text(if (isWater) "Intake" else "Reps", fontSize = 11.sp, color = HydraColors.Navy)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("---", color = Color(0xFF67B0A8), fontSize = 11.sp)
-                Spacer(modifier = Modifier.width(4.dp))
-                Text("Goal", fontSize = 11.sp, color = HydraColors.Muted)
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("---", color = Color(0xFF328C86), fontSize = 11.sp)
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Goal ($latestGoal $unit)", fontSize = 11.sp, color = HydraColors.Muted)
+                }
             }
         }
 
         Spacer(modifier = Modifier.height(16.dp))
-
-        // Daily Bar Chart Canvas with horizontal scrolling when many days
-        val maxAmount = max(
-            if (isWater) 3000 else 120,
-            max(
-                rangeDays.maxOfOrNull { if (isWater) it.totalWater else it.totalReps } ?: 0,
-                rangeDays.maxOfOrNull { if (isWater) it.snapshot.waterGoalMl else it.snapshot.pushUpGoalReps } ?: 0
-            )
-        )
-
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(140.dp)
-                .horizontalScroll(rememberScrollState())
-        ) {
-            val barWidth = 18.dp
-            val spacing = 12.dp
-            val totalWidth = maxOf(300.dp, (barWidth + spacing) * maxOf(7, rangeDays.size))
-
-            Canvas(modifier = Modifier.width(totalWidth).height(140.dp)) {
-                val chartHeight = size.height - 24.dp.toPx()
-                val bWidth = barWidth.toPx()
-                val sp = spacing.toPx()
-
-                // Historical Per-Day Goal Line / Segment for each day
-                rangeDays.forEachIndexed { index, dayView ->
-                    val dayGoal = if (isWater) dayView.snapshot.waterGoalMl else dayView.snapshot.pushUpGoalReps
-                    val dayGoalY = (chartHeight - (dayGoal.toFloat() / maxAmount.toFloat()) * chartHeight).coerceIn(6f, chartHeight)
-                    val x = index * (bWidth + sp) + sp
-
-                    // Draw segment above this day's bar
-                    drawLine(
-                        color = Color(0xFF4DB6AC),
-                        start = Offset(x, dayGoalY),
-                        end = Offset(x + bWidth, dayGoalY),
-                        strokeWidth = 2.dp.toPx(),
-                        pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 4f))
-                    )
-
-                    // Step to next day's goal if not last
-                    if (index < rangeDays.size - 1) {
-                        val nextGoal = if (isWater) rangeDays[index + 1].snapshot.waterGoalMl else rangeDays[index + 1].snapshot.pushUpGoalReps
-                        val nextGoalY = (chartHeight - (nextGoal.toFloat() / maxAmount.toFloat()) * chartHeight).coerceIn(6f, chartHeight)
-                        drawLine(
-                            color = Color(0xFF4DB6AC),
-                            start = Offset(x + bWidth, dayGoalY),
-                            end = Offset(x + bWidth + sp, nextGoalY),
-                            strokeWidth = 2.dp.toPx(),
-                            pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 4f))
-                        )
-                    }
-                }
-
-                // Bars
-                rangeDays.forEachIndexed { index, dayView ->
-                    val amount = if (isWater) dayView.totalWater else dayView.totalReps
-                    val barHeight = ((amount.toFloat() / maxAmount.toFloat()) * chartHeight).coerceIn(4f, chartHeight)
-                    val x = index * (bWidth + sp) + sp
-
-                    drawRoundRect(
-                        color = themeColor,
-                        topLeft = Offset(x, chartHeight - barHeight),
-                        size = Size(bWidth, barHeight),
-                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(6.dp.toPx(), 6.dp.toPx())
-                    )
+        chartStateHolder.SaveableStateProvider("$habitName:$selectedRange") {
+            val scrollState = rememberScrollState()
+            var initialChartPositionSet by rememberSaveable { mutableStateOf(false) }
+            val slotWidth = 36.dp
+            val chartWidth = slotWidth * maxOf(7, chartHistory.size)
+            LaunchedEffect(chartWidth, selectedRange, allDays.size) {
+                if (!initialChartPositionSet && allDays.isNotEmpty()) {
+                    snapshotFlow { scrollState.maxValue }.first { it > 0 || chartHistory.size <= 7 }
+                    if (scrollState.maxValue > 0) scrollState.scrollTo(scrollState.maxValue)
+                    initialChartPositionSet = true
                 }
             }
-
-            // Labels under bars
-            Row(
-                modifier = Modifier
-                    .width(totalWidth)
-                    .align(Alignment.BottomStart)
-            ) {
-                rangeDays.forEach { d ->
-                    Box(
-                        modifier = Modifier.width(18.dp + 12.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = LocalDate.parse(d.snapshot.day).dayOfWeek.name.take(2),
-                            fontSize = 9.sp,
-                            color = HydraColors.Muted,
-                            textAlign = TextAlign.Center
-                        )
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+                Column(
+                    Modifier.width(40.dp).height(132.dp).padding(end = 4.dp),
+                    verticalArrangement = Arrangement.SpaceBetween,
+                    horizontalAlignment = Alignment.End
+                ) {
+                    (4 downTo 0).forEach { tick ->
+                        val amount = tick * tickStep
+                        val label = if (isWater) {
+                            when {
+                                amount == 0 -> "0"
+                                amount % 1000 == 0 -> "${amount / 1000}L"
+                                else -> "${amount / 1000.0}L"
+                            }
+                        } else amount.toString()
+                        Text(label, fontSize = 11.sp, lineHeight = 14.sp, color = HydraColors.Muted)
+                    }
+                }
+                Column(Modifier.weight(1f).horizontalScroll(scrollState)) {
+                    Canvas(Modifier.width(chartWidth).height(132.dp)) {
+                        val bottom = size.height - 4.dp.toPx()
+                        val slot = slotWidth.toPx()
+                        val barWidth = 20.dp.toPx()
+                        for (tick in 0..4) {
+                            val y = bottom - bottom * tick / 4f
+                            drawLine(Color(0xFFE5EEEE), Offset(0f, y), Offset(size.width, y), 1.dp.toPx())
+                        }
+                        chartHistory.forEachIndexed { index, day ->
+                            val x = index * slot + (slot - barWidth) / 2f
+                            val amount = day.second
+                            val barHeight = amount.toFloat().coerceAtLeast(0f) / scaleMax * bottom
+                            if (amount > 0) {
+                                drawRoundRect(
+                                    color = themeColor,
+                                    topLeft = Offset(x, bottom - barHeight),
+                                    size = Size(barWidth, barHeight),
+                                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(5.dp.toPx())
+                                )
+                            }
+                            val goalY = bottom - day.third.toFloat() / scaleMax * bottom
+                            drawLine(
+                                Color(0xFF328C86),
+                                Offset(index * slot + 2.dp.toPx(), goalY),
+                                Offset((index + 1) * slot - 2.dp.toPx(), goalY),
+                                2.dp.toPx(),
+                                pathEffect = PathEffect.dashPathEffect(floatArrayOf(5.dp.toPx(), 3.dp.toPx()))
+                            )
+                        }
+                    }
+                    Row(Modifier.width(chartWidth).heightIn(min = 40.dp), verticalAlignment = Alignment.CenterVertically) {
+                        chartHistory.forEachIndexed { index, day ->
+                            val date = day.first
+                            val label = when (selectedRange) {
+                                "7D" -> date.dayOfWeek.name.take(3).lowercase().replaceFirstChar { it.uppercase() }
+                                "30D" -> if (index % 5 == 0 || index == chartHistory.lastIndex) date.format(DateTimeFormatter.ofPattern("M/d")) else ""
+                                "90D" -> if (date.dayOfMonth == 1 || date.dayOfWeek.value == 1) date.format(DateTimeFormatter.ofPattern("d MMM")) else ""
+                                else -> if (date.dayOfMonth == 1 || index == 0) date.format(DateTimeFormatter.ofPattern("MMM yy")) else ""
+                            }
+                            Box(Modifier.width(slotWidth), contentAlignment = Alignment.Center) {
+                                Text(label, fontSize = 11.sp, lineHeight = 14.sp, color = HydraColors.Muted, textAlign = TextAlign.Center)
+                            }
+                        }
                     }
                 }
             }
@@ -892,15 +874,15 @@ private fun HabitDrilldownTabContent(
 
     // Consistency & Hit Streak Row
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min),
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        val consistencyPct = if (totalEligible > 0) (goalDaysHit * 100) / totalEligible else 0
+        val consistencyPct = ProgressMath.completionPercent(rangeMetrics, today, habitName)
         val consistencyLabel = if (selectedRange == "7D") "Weekly Consistency" else "Range Consistency"
-        SectionCard(modifier = Modifier.weight(1f)) {
+        SectionCard(modifier = Modifier.weight(1f).fillMaxHeight()) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
-                    imageVector = Icons.Default.ShowChart,
+                    imageVector = Icons.AutoMirrored.Filled.ShowChart,
                     contentDescription = null,
                     tint = HydraColors.PrimaryTeal,
                     modifier = Modifier.size(16.dp)
@@ -909,10 +891,10 @@ private fun HabitDrilldownTabContent(
                 Text(consistencyLabel, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = HydraColors.Navy)
             }
             Spacer(modifier = Modifier.height(6.dp))
-            Text("$consistencyPct%", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = HydraColors.Navy)
+            Text(if (consistencyPct == null) "—" else "$consistencyPct%", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = HydraColors.Navy)
             Spacer(modifier = Modifier.height(4.dp))
             LinearProgressIndicator(
-                progress = { consistencyPct.toFloat() / 100f },
+                progress = { (consistencyPct ?: 0).toFloat() / 100f },
                 color = themeColor,
                 trackColor = Color(0xFFE8F1F1),
                 modifier = Modifier.fillMaxWidth().height(6.dp),
@@ -920,7 +902,7 @@ private fun HabitDrilldownTabContent(
             )
         }
 
-        SectionCard(modifier = Modifier.weight(1f)) {
+        SectionCard(modifier = Modifier.weight(1f).fillMaxHeight()) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
                     imageVector = Icons.Default.TrackChanges,
@@ -964,7 +946,7 @@ private fun HabitDrilldownTabContent(
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "$habitName Record",
+                    text = "$habitName Best in selected range",
                     fontWeight = FontWeight.Bold,
                     fontSize = 15.sp,
                     color = HydraColors.Navy
@@ -997,7 +979,7 @@ private fun HabitDrilldownTabContent(
 
     TextButton(
         onClick = onOpenCalendar,
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier.fillMaxWidth().testTag("view_history_calendar_button")
     ) {
         Text(
             text = "View history calendar & logs →",
@@ -1019,45 +1001,41 @@ private fun KpiCard(
     accentColor: Color
 ) {
     Card(
-        modifier = modifier,
+        modifier = modifier.heightIn(min = 112.dp),
         shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = bgColor),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
         Column(
-            modifier = Modifier.padding(10.dp),
+            modifier = Modifier.fillMaxWidth().padding(8.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            if (iconRes != null) {
-                Image(
-                    painter = painterResource(iconRes),
-                    contentDescription = null,
-                    modifier = Modifier.size(20.dp),
-                    contentScale = ContentScale.Fit
-                )
-            } else if (icon != null) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = accentColor,
-                    modifier = Modifier.size(20.dp)
-                )
+            Box(
+                modifier = Modifier.size(30.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                if (iconRes != null) {
+                    Image(painter = painterResource(iconRes), contentDescription = null, modifier = Modifier.size(22.dp), contentScale = ContentScale.Fit)
+                } else if (icon != null) {
+                    Icon(imageVector = icon, contentDescription = null, tint = accentColor, modifier = Modifier.size(22.dp))
+                }
             }
-            Spacer(modifier = Modifier.height(3.dp))
+            Spacer(modifier = Modifier.height(2.dp))
             Text(
                 text = number,
-                fontSize = 17.sp,
+                fontSize = 15.sp,
                 fontWeight = FontWeight.ExtraBold,
                 color = HydraColors.Navy,
-                maxLines = 1
+                maxLines = 1,
+                textAlign = TextAlign.Center
             )
             Spacer(modifier = Modifier.height(2.dp))
             Text(
                 text = label,
-                fontSize = 10.sp,
+                fontSize = 12.sp,
                 color = HydraColors.Muted,
                 textAlign = TextAlign.Center,
-                lineHeight = 12.sp,
+                lineHeight = 16.sp,
                 maxLines = 2
             )
         }
@@ -1066,12 +1044,13 @@ private fun KpiCard(
 
 @Composable
 private fun HabitRingIndicator(
+    modifier: Modifier = Modifier,
     label: String,
     iconRes: Int,
     percent: Int?,
     color: Color
 ) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+    Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
             modifier = Modifier.size(54.dp),
             contentAlignment = Alignment.Center
@@ -1110,7 +1089,9 @@ private fun HabitRingIndicator(
             text = label,
             fontSize = 11.sp,
             color = HydraColors.Navy,
-            fontWeight = FontWeight.Medium
+            fontWeight = FontWeight.Medium,
+            textAlign = TextAlign.Center,
+            maxLines = 2
         )
     }
 }
@@ -1118,10 +1099,16 @@ private fun HabitRingIndicator(
 @Composable
 private fun CalendarHistoryView(
     allDays: List<DayView>,
+    today: LocalDate,
     onBack: () -> Unit,
     onSelectDay: (DayView) -> Unit
 ) {
-    var currentMonth by remember { mutableStateOf(YearMonth.now()) }
+    var currentMonthValue by rememberSaveable { mutableStateOf(YearMonth.from(today).toString()) }
+    val currentMonth = remember(currentMonthValue) { YearMonth.parse(currentMonthValue) }
+    val firstMonth = remember(allDays, today) {
+        allDays.minOfOrNull { YearMonth.from(LocalDate.parse(it.snapshot.day)) } ?: YearMonth.from(today)
+    }
+    val lastMonth = YearMonth.from(today)
     val dayMap = remember(allDays) { allDays.associateBy { it.snapshot.day } }
 
     Column(modifier = Modifier.fillMaxWidth()) {
@@ -1141,7 +1128,7 @@ private fun CalendarHistoryView(
             )
         }
 
-        Spacer(modifier = Modifier.height(10.dp))
+        Spacer(modifier = Modifier.height(4.dp))
 
         // Month Selector Bar
         SectionCard(modifier = Modifier.fillMaxWidth()) {
@@ -1150,97 +1137,102 @@ private fun CalendarHistoryView(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = { currentMonth = currentMonth.minusMonths(1) }) {
+                IconButton(onClick = { currentMonthValue = currentMonth.minusMonths(1).toString() }, enabled = currentMonth > firstMonth) {
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Prev month")
                 }
                 Text(
-                    text = "${currentMonth.month.name.lowercase().replaceFirstChar { it.uppercase() }} ${currentMonth.year}",
+                    text = currentMonth.format(DateTimeFormatter.ofPattern("MMMM yyyy")),
                     fontWeight = FontWeight.Bold,
                     fontSize = 16.sp,
                     color = HydraColors.Navy
                 )
-                IconButton(onClick = { currentMonth = currentMonth.plusMonths(1) }) {
+                IconButton(onClick = { currentMonthValue = currentMonth.plusMonths(1).toString() }, enabled = currentMonth < lastMonth) {
                     Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "Next month")
                 }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(4.dp))
 
             // Day of Week Header
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceAround) {
+            Row(modifier = Modifier.fillMaxWidth().testTag("calendar_weekday_headers")) {
                 listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun").forEach { dow ->
-                    Text(
-                        text = dow,
-                        fontSize = 11.sp,
-                        color = HydraColors.Muted,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.width(36.dp),
-                        textAlign = TextAlign.Center
-                    )
+                    Box(Modifier.weight(1f).testTag("calendar_weekday_$dow"), contentAlignment = Alignment.Center) {
+                        Text(dow, fontSize = 12.sp, color = HydraColors.Muted, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
+                    }
                 }
             }
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Days Grid
-            val firstOfMonth = currentMonth.atDay(1)
-            val firstDayOfWeek = firstOfMonth.dayOfWeek.value // 1=Mon, 7=Sun
-            val daysInMonth = currentMonth.lengthOfMonth()
-
-            var dayNumber = 1
-            var rowStart = 1
-            while (dayNumber <= daysInMonth) {
-                Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.SpaceAround) {
-                    for (col in 1..7) {
-                        if (rowStart == 1 && col < firstDayOfWeek || dayNumber > daysInMonth) {
-                            Spacer(modifier = Modifier.width(48.dp))
-                        } else {
-                            val thisDate = currentMonth.atDay(dayNumber)
-                            val dayStr = thisDate.toString()
-                            val dayView = dayMap[dayStr]
+            val firstDayOffset = currentMonth.atDay(1).dayOfWeek.value - 1
+            val cellCount = ((firstDayOffset + currentMonth.lengthOfMonth() + 6) / 7) * 7
+            val cellDates = (0 until cellCount).map { index ->
+                val day = index - firstDayOffset + 1
+                if (day in 1..currentMonth.lengthOfMonth()) currentMonth.atDay(day) else null
+            }
+            Column(modifier = Modifier.fillMaxWidth().testTag("calendar_grid")) {
+                cellDates.chunked(7).forEach { week ->
+                    Row(modifier = Modifier.fillMaxWidth()) {
+                        week.forEach { date ->
+                            val dayView = date?.let { dayMap[it.toString()] }
+                            val isToday = date == today
+                            val isFuture = date?.isAfter(today) == true
                             val isPerfect = dayView?.metrics?.perfect == true
-                            val isToday = thisDate == LocalDate.now()
-
-                            val bgColor = when {
-                                isPerfect -> Color(0xFFD6F5D2)
-                                dayView != null && (dayView.metrics.waterMet || dayView.metrics.pushUpsMet) -> Color(0xFFE0F6F5)
-                                dayView != null -> Color(0xFFF7E6E1)
+                            val status = when {
+                                date == null || isFuture || dayView == null -> "Not applicable"
+                                isToday && !isPerfect -> "In progress"
+                                isPerfect -> "Completed"
+                                dayView.metrics.progress > 0f -> "Partial"
+                                else -> "Incomplete"
+                            }
+                            val background = when (status) {
+                                "Completed" -> Color(0xFFD6F5D2)
+                                "Partial", "In progress" -> Color(0xFFE0F6F5)
+                                "Incomplete" -> Color(0xFFF7E6E1)
                                 else -> Color(0xFFF5F7F7)
                             }
-
                             Box(
                                 modifier = Modifier
-                                    .size(48.dp)
-                                    .clickable(enabled = dayView != null) {
-                                        dayView?.let(onSelectDay)
-                                    },
+                                    .weight(1f)
+                                    .heightIn(min = 48.dp)
+                                    .semantics { contentDescription = date?.let { "$it, $status" } ?: "" }
+                                    .clickable(enabled = date != null && !isFuture && dayView != null) { dayView?.let(onSelectDay) }
+                                    .then(if (date != null) Modifier.testTag("calendar_day_${date.dayOfMonth}") else Modifier),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(36.dp)
-                                        .background(bgColor, CircleShape)
-                                        .border(
-                                            width = if (isToday) 2.dp else 0.dp,
-                                            color = if (isToday) HydraColors.PrimaryTeal else Color.Transparent,
-                                            shape = CircleShape
-                                        ),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = "$dayNumber",
-                                        fontSize = 12.sp,
-                                        fontWeight = if (isToday || isPerfect) FontWeight.Bold else FontWeight.Normal,
-                                        color = HydraColors.Navy
-                                    )
+                                if (date != null) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(32.dp)
+                                            .background(background, CircleShape)
+                                            .border(if (isToday) 2.dp else 0.dp, if (isToday) HydraColors.PrimaryTeal else Color.Transparent, CircleShape),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text("${date.dayOfMonth}", fontSize = 12.sp, fontWeight = if (isToday || isPerfect) FontWeight.Bold else FontWeight.Normal, color = HydraColors.Navy)
+                                    }
                                 }
                             }
-                            dayNumber++
                         }
                     }
                 }
-                rowStart++
+            }
+
+            Spacer(Modifier.height(10.dp))
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally), verticalAlignment = Alignment.CenterVertically) {
+                CalendarLegend(Color(0xFFD6F5D2), "Complete")
+                CalendarLegend(Color(0xFFE0F6F5), "Partial / today")
+                CalendarLegend(Color(0xFFF7E6E1), "Incomplete")
+                CalendarLegend(Color(0xFFF5F7F7), "N/A")
             }
         }
+    }
+}
+
+@Composable
+private fun CalendarLegend(color: Color, label: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(8.dp).background(color, CircleShape))
+        Spacer(Modifier.width(3.dp))
+        Text(label, fontSize = 8.sp, color = HydraColors.Muted, maxLines = 1)
     }
 }

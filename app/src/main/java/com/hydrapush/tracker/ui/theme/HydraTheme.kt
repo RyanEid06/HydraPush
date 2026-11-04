@@ -39,14 +39,16 @@ object HydraColors {
 }
 
 private val HydraLight = lightColorScheme(
-    primary = HydraColors.PrimaryTeal,
+    primary = HydraColors.DeepTeal,
     secondary = HydraColors.PushupLime,
     tertiary = HydraColors.ProteinCoral,
     background = HydraColors.Background,
     surface = HydraColors.Surface,
     onBackground = HydraColors.TextPrimary,
     onSurface = HydraColors.TextPrimary,
-    onPrimary = Color.White
+    onPrimary = Color.White,
+    onSecondary = HydraColors.Navy,
+    onTertiary = HydraColors.Navy
 )
 
 
