@@ -31,10 +31,11 @@ class ProgressMathTest {
     @Test
     fun currentStreakRetainsYesterdayWhileTodayIncomplete() {
         val days = listOf(
-            day(d.minusDays(1), 2500, 100, true, true),
-            day(d, 100, 5)
+            day(d.minusDays(1), 2500, 0),
+            day(d, 150, 0, creatine = true, protein = true, cr = false, pr = false)
         )
-        assertEquals(1, ProgressMath.currentPerfectStreak(days, d))
+        assertEquals(1, ProgressMath.currentActiveStreak(days, d))
+        assertEquals(0, ProgressMath.currentActiveStreak(days.takeLast(1), d))
     }
 
     @Test
@@ -44,8 +45,8 @@ class ProgressMathTest {
             day(d.minusDays(1), 2500, 100, true, true),
             day(d, 2500, 100, true, true)
         )
-        assertEquals(2, ProgressMath.currentPerfectStreak(days, d))
-        assertEquals(2, ProgressMath.longestPerfectStreak(days))
+        assertEquals(2, ProgressMath.currentActiveStreak(days, d))
+        assertEquals(2, ProgressMath.longestActiveStreak(days))
     }
 
     @Test
@@ -67,6 +68,45 @@ class ProgressMathTest {
         assertTrue(water2l?.isUnlocked == true)
         assertTrue(water3l?.isUnlocked == true)
         assertTrue(pushup100?.isUnlocked == true)
+    }
+
+    @Test
+    fun streakBadgeCountsDifferentCompletedGoalsOnConsecutiveDays() {
+        val days = listOf(
+            day(d.minusDays(2), 2500, 0),
+            day(d.minusDays(1), 0, 100),
+            day(d, 0, 0, creatine = true)
+        )
+        val achievements = ProgressMath.evaluateAchievements(days)
+        assertTrue(achievements.single { it.id == "streak_3" }.isUnlocked)
+        assertFalse(achievements.single { it.id == "first_perfect" }.isUnlocked)
+    }
+
+    @Test
+    fun onlyActiveGoalsCanEarnAStreakDay() {
+        val empty = day(d, 0, 0).copy(pullUpGoalReps = 10)
+        val completed = listOf(
+            empty.copy(waterMl = 2500),
+            empty.copy(pushUpReps = 100),
+            empty.copy(pullUpReps = 10),
+            empty.copy(creatineDone = true),
+            empty.copy(proteinDone = true)
+        )
+        completed.forEach { assertEquals(1, ProgressMath.currentActiveStreak(listOf(it), d)) }
+        assertEquals(0, ProgressMath.currentActiveStreak(listOf(empty.copy(pullUpReps = 9)), d))
+    }
+
+    @Test
+    fun pullUpsAffectOnlyDaysWithAHistoricalPullUpGoal() {
+        val legacy = day(d.minusDays(1), 2500, 100, cr = false, pr = false)
+        val new = legacy.copy(day = d, pullUpGoalReps = 10, pullUpReps = 5, pullUpsRequired = true)
+        assertTrue(legacy.perfect)
+        assertFalse(new.perfect)
+        assertEquals(2.5f / 3, new.progress, 0.0001f)
+        assertTrue(new.copy(pullUpReps = 10).perfect)
+        val settled = d.plusDays(1)
+        assertEquals(50, ProgressMath.completionPercent(listOf(legacy, new), settled))
+        assertEquals(0, ProgressMath.completionPercent(listOf(legacy, new), settled, "Pull-ups"))
     }
 
     @Test
@@ -111,5 +151,16 @@ class ProgressMathTest {
         assertTrue(ProgressMath.eligibleHistory(listOf(disabledToday), d, "Creatine").isEmpty())
         assertNull(ProgressMath.completionPercent(listOf(disabledToday), d, "Creatine"))
         assertNull(ProgressMath.completionPercent(emptyList(), d, "Protein"))
+    }
+
+    @Test
+    fun historicallyDisabledOptionalDaysAreExcludedFromMixedDenominator() {
+        val days = listOf(
+            day(d.minusDays(3), 0, 0, creatine = true),
+            day(d.minusDays(2), 0, 0, cr = false),
+            day(d.minusDays(1), 0, 0)
+        )
+
+        assertEquals(50, ProgressMath.completionPercent(days, d, "Creatine"))
     }
 }

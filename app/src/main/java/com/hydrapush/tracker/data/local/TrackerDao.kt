@@ -14,6 +14,9 @@ interface TrackerDao {
     @Query("SELECT * FROM push_up_sets ORDER BY createdAtEpochMs ASC, id ASC")
     fun observePushUpSets(): Flow<List<PushUpSetEntity>>
 
+    @Query("SELECT * FROM pull_up_sets ORDER BY createdAtEpochMs ASC, id ASC")
+    fun observePullUpSets(): Flow<List<PullUpSetEntity>>
+
     @Query("SELECT * FROM achievements ORDER BY unlockedAtEpochMs ASC")
     fun observeAchievements(): Flow<List<AchievementEntity>>
 
@@ -28,6 +31,12 @@ interface TrackerDao {
 
     @Query("SELECT * FROM push_up_sets ORDER BY createdAtEpochMs ASC, id ASC")
     suspend fun getAllPushUpSets(): List<PushUpSetEntity>
+
+    @Query("SELECT * FROM pull_up_sets ORDER BY createdAtEpochMs ASC, id ASC")
+    suspend fun getAllPullUpSets(): List<PullUpSetEntity>
+
+    @Query("SELECT COALESCE(SUM(reps), 0) FROM pull_up_sets WHERE day = :day")
+    suspend fun getPullUpTotal(day: String): Long
 
     @Query("SELECT * FROM configuration_revisions ORDER BY effectiveLocalDay ASC, id ASC")
     suspend fun getAllRevisions(): List<ConfigurationRevisionEntity>
@@ -54,6 +63,9 @@ interface TrackerDao {
     suspend fun insertPushUpSet(set: PushUpSetEntity): Long
 
     @Insert
+    suspend fun insertPullUpSet(set: PullUpSetEntity): Long
+
+    @Insert
     suspend fun insertRevision(revision: ConfigurationRevisionEntity): Long
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
@@ -68,6 +80,9 @@ interface TrackerDao {
     @Query("DELETE FROM push_up_sets WHERE id = :id AND day = :today")
     suspend fun removePushUpSetToday(id: Long, today: String): Int
 
+    @Query("DELETE FROM pull_up_sets WHERE id = :id AND day = :today")
+    suspend fun removePullUpSetToday(id: Long, today: String): Int
+
     // Atomic full replacement for validated backup restoration
     @Transaction
     suspend fun restoreFullDatabase(
@@ -75,12 +90,14 @@ interface TrackerDao {
         water: List<WaterEntryEntity>,
         pushups: List<PushUpSetEntity>,
         revisions: List<ConfigurationRevisionEntity>,
-        achievements: List<AchievementEntity>
+        achievements: List<AchievementEntity>,
+        pullups: List<PullUpSetEntity> = emptyList()
     ) {
         clearAllTables()
         insertAllSnapshots(snapshots)
         insertAllWater(water)
         insertAllPushUps(pushups)
+        insertAllPullUps(pullups)
         insertAllRevisions(revisions)
         insertAllAchievements(achievements)
     }
@@ -94,6 +111,9 @@ interface TrackerDao {
     @Query("DELETE FROM push_up_sets")
     suspend fun clearPushUps()
 
+    @Query("DELETE FROM pull_up_sets")
+    suspend fun clearPullUps()
+
     @Query("DELETE FROM configuration_revisions")
     suspend fun clearRevisions()
 
@@ -104,6 +124,7 @@ interface TrackerDao {
     suspend fun clearAllTables() {
         clearWater()
         clearPushUps()
+        clearPullUps()
         clearSnapshots()
         clearRevisions()
         clearAchievements()
@@ -117,6 +138,9 @@ interface TrackerDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAllPushUps(pushups: List<PushUpSetEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAllPullUps(pullups: List<PullUpSetEntity>)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAllRevisions(revisions: List<ConfigurationRevisionEntity>)

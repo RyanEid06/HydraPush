@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.EmojiEvents
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -28,15 +29,17 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
+import com.hydrapush.tracker.domain.ValidationLimits
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -45,12 +48,15 @@ import com.hydrapush.tracker.data.repository.DayView
 import com.hydrapush.tracker.data.repository.TrackerRepository
 import com.hydrapush.tracker.domain.ProgressMath
 import com.hydrapush.tracker.ui.components.BrandHeader
+import com.hydrapush.tracker.ui.components.HistoryEntryRow
 import com.hydrapush.tracker.ui.theme.HydraColors
 import java.time.LocalDate
-import kotlin.math.min
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.CancellationException
+
+private enum class RepHabit { PushUp, PullUp }
+private val PullUpButtonGold = Color(0xFFF7D27A)
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -64,11 +70,13 @@ fun DashboardScreen(
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
     var showWaterDialog by remember { mutableStateOf(false) }
-    var showPushUpDialog by remember { mutableStateOf(false) }
+    var setDialog by remember { mutableStateOf<RepHabit?>(null) }
     var inputAmount by remember { mutableStateOf("") }
     var dialogError by remember { mutableStateOf<String?>(null) }
 
     var showTodayLogs by remember { mutableStateOf(false) }
+    var showWaterHistory by remember { mutableStateOf(false) }
+    var showPullUpHistory by remember { mutableStateOf(false) }
     var undoMessage by remember { mutableStateOf<Job?>(null) }
     fun showUndo(message: String, undo: suspend () -> Unit) {
         undoMessage?.cancel()
@@ -98,7 +106,7 @@ fun DashboardScreen(
     }
     val metrics = today?.metrics
     val streak = remember(days, localToday) {
-        ProgressMath.currentPerfectStreak(days.map { it.metrics }, localToday)
+        ProgressMath.currentActiveStreak(days.map { it.metrics }, localToday)
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -112,7 +120,8 @@ fun DashboardScreen(
             BrandHeader(
                 subtitle = "Daily performance",
                 showDateBar = true,
-                date = localToday
+                date = localToday,
+                onEditToday = { showTodayLogs = true }
             )
 
             if (metrics == null) {
@@ -125,218 +134,102 @@ fun DashboardScreen(
                     CircularProgressIndicator(color = HydraColors.PrimaryTeal)
                 }
             } else {
-                // Main Top Row: Two Equal-Dominance Side-by-Side Cards
-                Row(
-                    modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    // 1. Water Card
-                    WaterCard(
-                        modifier = Modifier.weight(1f).fillMaxHeight(),
-                        waterMl = metrics.waterMl,
-                        goalMl = metrics.waterGoalMl,
-                        onAddQuick = { amount ->
-                            persist {
-                                val entryId = repository.addWater(amount)
-                                showUndo("Added $amount ml water") { repository.undoWater(entryId) }
-                            }
-                        },
-                        onCustomClick = {
-                            inputAmount = ""
-                            dialogError = null
-                            showWaterDialog = true
-                        }
-                    )
-
-                    // 2. Push-ups Card
-                    PushUpCard(
-                        modifier = Modifier.weight(1f).fillMaxHeight(),
-                        reps = metrics.pushUpReps,
-                        goalReps = metrics.pushUpGoalReps,
-                        sets = today.sets.map { it.reps },
-                        onAddSetClick = {
-                            inputAmount = ""
-                            dialogError = null
-                            showPushUpDialog = true
-                        }
-                    )
+                BoxWithConstraints(Modifier.fillMaxWidth()) {
+                    val stacked = maxWidth < 358.dp || LocalDensity.current.fontScale > 1.15f
+                    val water: @Composable (Modifier) -> Unit = { cardModifier ->
+                        WaterCard(cardModifier, metrics.waterMl, metrics.waterGoalMl,
+                            onAddQuick = { amount -> persist {
+                                val id = repository.addWater(amount)
+                                showUndo("Added $amount ml water") { repository.undoWater(id) }
+                            } },
+                            onCustomClick = { inputAmount = ""; dialogError = null; showWaterDialog = true },
+                            onHistoryClick = { showWaterHistory = true })
+                    }
+                    val push: @Composable (Modifier) -> Unit = { cardModifier ->
+                        RepCard(cardModifier, RepHabit.PushUp, metrics.pushUpReps, metrics.pushUpGoalReps,
+                            today.sets.map { it.reps },
+                            onAddSetClick = { inputAmount = ""; dialogError = null; setDialog = RepHabit.PushUp })
+                    }
+                    if (stacked) Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        water(Modifier.fillMaxWidth()); push(Modifier.fillMaxWidth())
+                    } else Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        water(Modifier.weight(1f).fillMaxHeight()); push(Modifier.weight(1f).fillMaxHeight())
+                    }
                 }
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                // Optional Active Habits Row (Creatine & Protein Shake)
+                Spacer(Modifier.height(14.dp))
+                metrics.pullUpGoalReps?.let { goal ->
+                    RepCard(
+                        modifier = Modifier.fillMaxWidth(),
+                        habit = RepHabit.PullUp,
+                        reps = metrics.pullUpReps,
+                        goalReps = goal,
+                        sets = today.pullUpSets.map { it.reps },
+                        onHistoryClick = { showPullUpHistory = true },
+                        onAddSetClick = { inputAmount = ""; dialogError = null; setDialog = RepHabit.PullUp }
+                    )
+                    Spacer(Modifier.height(14.dp))
+                }
                 val showCreatine = today.snapshot.creatineRequired
                 val showProtein = today.snapshot.proteinRequired
-
                 if (showCreatine || showProtein) {
                     BoxWithConstraints(Modifier.fillMaxWidth()) {
-                    val density = LocalDensity.current
-                    var contentHeight by remember(maxWidth, density.density, density.fontScale, showCreatine, showProtein) { mutableIntStateOf(0) }
-                    val minimumHeight = with(density) { contentHeight.toDp() }
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        if (showCreatine) {
-                            SupplementCard(
-                                modifier = Modifier.weight(1f).heightIn(min = minimumHeight),
-                                onContentHeight = { contentHeight = maxOf(contentHeight, it) },
-                                name = "Creatine",
-                                subtitle = "5 g daily",
-                                iconRes = R.drawable.ic_habit_creatine,
-                                isDone = today.snapshot.creatineDone,
-                                backgroundColor = HydraColors.SurfaceAqua,
-                                testTag = "creatine_card",
-                                onToggle = { done ->
-                                    persist { repository.toggleSupplement(creatine = true) }
-                                }
-                            )
+                        val stacked = maxWidth < 358.dp || LocalDensity.current.fontScale > 1.15f
+                        val habits: @Composable (Modifier) -> Unit = { habitModifier ->
+                            if (showCreatine) SupplementCard(habitModifier, "Creatine", "5 g daily", R.drawable.ic_habit_creatine,
+                                today.snapshot.creatineDone, HydraColors.SurfaceAqua, "creatine_card") {
+                                persist { repository.toggleSupplement(creatine = true) }
+                            }
+                            if (showProtein) SupplementCard(habitModifier, "Protein Shake", "1 serving (≈ 25–30 g)", R.drawable.ic_habit_protein,
+                                today.snapshot.proteinDone, HydraColors.SurfaceCoral, "protein_card") {
+                                persist { repository.toggleSupplement(creatine = false) }
+                            }
                         }
-                        if (showProtein) {
-                            SupplementCard(
-                                modifier = Modifier.weight(1f).heightIn(min = minimumHeight),
-                                onContentHeight = { contentHeight = maxOf(contentHeight, it) },
-                                name = "Protein Shake",
-                                subtitle = "1 serving (≈ 25–30 g)",
-                                iconRes = R.drawable.ic_habit_protein,
-                                isDone = today.snapshot.proteinDone,
-                                backgroundColor = HydraColors.SurfaceCoral,
-                                testTag = "protein_card",
-                                onToggle = { done ->
-                                    persist { repository.toggleSupplement(creatine = false) }
-                                }
-                            )
+                        if (stacked || !(showCreatine && showProtein)) Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            habits(Modifier.fillMaxWidth())
+                        } else Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            habits(Modifier.weight(1f).fillMaxHeight())
                         }
                     }
-                    }
-                    Spacer(modifier = Modifier.height(14.dp))
+                    Spacer(Modifier.height(16.dp))
                 }
-
-                // Bottom Performance Summary Row: Streak Card + Daily Completion Card
-                Row(
-                    modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    // Streak Card
-                    Card(
-                        modifier = Modifier
-                            .weight(1f).fillMaxHeight()
-                            .clickable(onClick = onNavigateToStats)
-                            .testTag("streak_card"),
-                        shape = RoundedCornerShape(20.dp),
-                        colors = CardDefaults.cardColors(containerColor = HydraColors.SurfaceCoral),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(14.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(36.dp)
-                                    .background(Color(0xFFFFDFD3), CircleShape),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.LocalFireDepartment,
-                                    contentDescription = "Streak",
-                                    tint = HydraColors.PerfectDayOrange,
-                                    modifier = Modifier.size(24.dp)
-                                )
+                BoxWithConstraints(Modifier.fillMaxWidth()) {
+                    val stacked = maxWidth < 358.dp || LocalDensity.current.fontScale > 1.15f
+                    val streakCard: @Composable (Modifier) -> Unit = { cardModifier ->
+                        Card(cardModifier.testTag("streak_card").clickable(onClick = onNavigateToStats),
+                            shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = HydraColors.SurfaceCoral)) {
+                            Row(Modifier.fillMaxWidth().heightIn(min = 86.dp).padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.LocalFireDepartment, null, Modifier.size(34.dp), tint = HydraColors.PerfectDayOrange)
+                                Spacer(Modifier.width(8.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text("$streak-day Streak", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = HydraColors.Navy)
+                                    Text(if (streak > 0) "Keep it going!" else "Start today!", fontSize = 12.sp, color = HydraColors.Muted)
+                                }
+                                Icon(Icons.Default.ChevronRight, "View Stats", Modifier.size(18.dp), tint = HydraColors.Muted)
                             }
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "$streak-day Streak",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 15.sp,
-                                    color = HydraColors.Navy
-                                )
-                                Text(
-                                    text = if (streak > 0) "Keep it going!" else "Start today!",
-                                    fontSize = 12.sp,
-                                    color = HydraColors.Muted
-                                )
-                            }
-                            Icon(
-                                imageVector = Icons.Default.ChevronRight,
-                                contentDescription = "View Stats",
-                                tint = HydraColors.Muted,
-                                modifier = Modifier.size(18.dp)
-                            )
                         }
                     }
-
-                    // Daily Completion Card
-                    Card(
-                        modifier = Modifier
-                            .weight(1f).fillMaxHeight()
-                            .testTag("daily_completion_card"),
-                        shape = RoundedCornerShape(20.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color.White),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(14.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
+                    val completion: @Composable (Modifier) -> Unit = { cardModifier ->
+                        Row(cardModifier.testTag("daily_completion_card").heightIn(min = 86.dp).padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
-                                Text(
-                                    text = "Daily Completion",
-                                    fontSize = 11.sp,
-                                    color = HydraColors.Muted
-                                )
-                                Spacer(modifier = Modifier.height(2.dp))
-                                val pct = (metrics.progress * 100).toInt()
-                                Text(
-                                    text = "$pct%",
-                                    fontSize = 22.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = HydraColors.Navy
-                                )
+                                Text("Daily Completion", fontSize = 12.sp, color = HydraColors.Muted)
+                                Text("${(metrics.progress * 100).toInt()}%", fontSize = 30.sp, fontWeight = FontWeight.ExtraBold, color = HydraColors.DeepTeal)
                             }
-
-                            // Mini progress circle with trophy icon
-                            Box(
-                                modifier = Modifier.size(36.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Canvas(modifier = Modifier.fillMaxSize()) {
-                                    val strokeWidth = 5.dp.toPx()
-                                    drawCircle(
-                                        color = Color(0xFFEAF5E5),
-                                        style = Stroke(width = strokeWidth)
-                                    )
-                                    drawArc(
-                                        color = HydraColors.Lime,
-                                        startAngle = -90f,
-                                        sweepAngle = metrics.progress * 360f,
-                                        useCenter = false,
-                                        style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
-                                    )
-                                }
-                                Icon(
-                                    imageVector = Icons.Default.EmojiEvents,
-                                    contentDescription = "Trophy",
-                                    tint = Color(0xFFD49E00),
-                                    modifier = Modifier.size(20.dp)
-                                )
+                            Box(Modifier.size(58.dp).padding(4.dp), contentAlignment = Alignment.Center) {
+                                ProgressRing(metrics.progress, HydraColors.Lime, Modifier.fillMaxSize(), 7f)
+                                Icon(Icons.Default.EmojiEvents, "Daily progress", Modifier.size(26.dp), tint = HydraColors.PrimaryTeal)
                             }
                         }
+                    }
+                    if (stacked) Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        streakCard(Modifier.fillMaxWidth()); completion(Modifier.fillMaxWidth())
+                    } else Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        streakCard(Modifier.weight(1.05f))
+                        VerticalDivider(Modifier.padding(start = 12.dp).height(60.dp), color = HydraColors.Stroke)
+                        completion(Modifier.weight(1f))
                     }
                 }
             }
 
-            if (today != null) {
-                TextButton(onClick = { showTodayLogs = true }, modifier = Modifier.fillMaxWidth().testTag("today_logs_button")) {
-                    Text("Today's logs · correct entries", color = HydraColors.DeepTeal)
-                }
-            }
             Spacer(modifier = Modifier.height(20.dp))
         }
 
@@ -348,23 +241,66 @@ fun DashboardScreen(
         )
     }
 
+    if (showWaterHistory && today != null) {
+        AlertDialog(
+            onDismissRequest = { showWaterHistory = false },
+            containerColor = HydraColors.SurfaceBlue,
+            title = { Text("Water history") },
+            text = {
+                LazyColumn(Modifier.fillMaxWidth().heightIn(max = 360.dp).testTag("water_history_list")) {
+                    if (today.waters.isEmpty()) item { Text("No water logged today.") }
+                    items(today.waters, key = { it.id }) {
+                        HistoryEntryRow("+${it.amountMl} ml", it.createdAtEpochMs)
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showWaterHistory = false }) { Text("Done") } }
+        )
+    }
+
+    if (showPullUpHistory && today != null) {
+        AlertDialog(
+            onDismissRequest = { showPullUpHistory = false },
+            containerColor = HydraColors.SurfaceGold,
+            title = { Text("Pull-up set history") },
+            text = {
+                LazyColumn(Modifier.fillMaxWidth().heightIn(max = 360.dp).testTag("pullup_history_list")) {
+                    if (today.pullUpSets.isEmpty()) item { Text("No pull-up sets logged today.") }
+                    items(today.pullUpSets, key = { it.id }) { set ->
+                        HistoryEntryRow("+${set.reps} reps", set.createdAtEpochMs) {
+                            persist { repository.removePullUpSet(set.id) }
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showPullUpHistory = false }) { Text("Done") } }
+        )
+    }
+
     if (showTodayLogs && today != null) {
         AlertDialog(
             onDismissRequest = { showTodayLogs = false },
             title = { Text("Today's logs") },
             text = {
-                LazyColumn(Modifier.fillMaxWidth().heightIn(max = 420.dp)) {
-                    if (today.waters.isEmpty() && today.sets.isEmpty()) item { Text("No entries yet today.") }
+                LazyColumn(Modifier.fillMaxWidth().heightIn(max = 420.dp).testTag("today_logs_list")) {
+                    if (today.waters.isEmpty() && today.sets.isEmpty() && today.pullUpSets.isEmpty()) {
+                        item { Text("No entries yet today.") }
+                    }
                     items(today.waters, key = { "water_${it.id}" }) { entry ->
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                             Text("Water · ${entry.amountMl} ml", Modifier.weight(1f))
-                            TextButton(onClick = { persist { repository.undoWater(entry.id) } }) { Text("Remove") }
+                            TextButton(onClick = { persist { repository.undoWater(entry.id) } }, modifier = Modifier.testTag("remove_water_${entry.id}")) { Text("Remove") }
                         }
                     }
                     items(today.sets, key = { "set_${it.id}" }) { entry ->
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                             Text("Push-ups · ${entry.reps} reps", Modifier.weight(1f))
-                            TextButton(onClick = { persist { repository.removeSet(entry.id) } }) { Text("Remove") }
+                            TextButton(onClick = { persist { repository.removeSet(entry.id) } }, modifier = Modifier.testTag("remove_set_${entry.id}")) { Text("Remove") }
+                        }
+                    }
+                    items(today.pullUpSets, key = { "pullup_${it.id}" }) { set ->
+                        HistoryEntryRow("Pull-ups · ${set.reps} reps", set.createdAtEpochMs) {
+                            persist { repository.removePullUpSet(set.id) }
                         }
                     }
                 }
@@ -431,7 +367,7 @@ fun DashboardScreen(
                 Button(
                     onClick = {
                         val amount = inputAmount.toIntOrNull()
-                        if (amount == null || amount !in 1..5000) {
+                        if (amount == null || amount !in ValidationLimits.WATER_ENTRY) {
                             dialogError = "Enter an amount between 1 and 5,000 ml"
                         } else {
                             persist {
@@ -455,13 +391,16 @@ fun DashboardScreen(
         )
     }
 
-    // Add Push-up Set Dialog
-    if (showPushUpDialog) {
+    setDialog?.let { habit ->
+        val pullUp = habit == RepHabit.PullUp
+        val tag = if (pullUp) "add_pullup_set" else "add_set"
+        val limit = if (pullUp) ValidationLimits.PULL_UP_SET else ValidationLimits.PUSH_UP_SET
+        val presets = if (pullUp) listOf(1, 2, 3, 5, 10) else listOf(10, 15, 20, 25, 30)
         AlertDialog(
-            onDismissRequest = { showPushUpDialog = false },
+            onDismissRequest = { setDialog = null },
             title = {
                 Text(
-                    text = "Add Push-up Set",
+                    text = if (pullUp) "Add Pull-up Set" else "Add Push-up Set",
                     fontWeight = FontWeight.Bold,
                     color = HydraColors.Navy
                 )
@@ -485,7 +424,7 @@ fun DashboardScreen(
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .testTag("add_set_input")
+                            .testTag("${tag}_input")
                     )
                     if (dialogError != null) {
                         Spacer(modifier = Modifier.height(4.dp))
@@ -500,9 +439,10 @@ fun DashboardScreen(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        listOf(10, 15, 20, 25, 30).forEach { preset ->
+                        presets.forEach { preset ->
                             SuggestionChip(
-                                onClick = { inputAmount = preset.toString() },
+                                onClick = { inputAmount = preset.toString(); dialogError = null },
+                                modifier = if (pullUp) Modifier.testTag("add_pullup_$preset") else Modifier,
                                 label = { Text("$preset", fontSize = 11.sp) }
                             )
                         }
@@ -513,27 +453,32 @@ fun DashboardScreen(
                 Button(
                     onClick = {
                         val reps = inputAmount.toIntOrNull()
-                        if (reps == null || reps !in 1..1000) {
+                        if (reps == null || reps !in limit) {
                             dialogError = "Enter reps between 1 and 1,000"
                         } else {
                             persist {
-                                val setId = repository.addSet(reps)
-                                showUndo("Added $reps reps") { repository.removeSet(setId) }
+                                if (pullUp) {
+                                    val setId = repository.addPullUpSet(reps)
+                                    showUndo("Added $reps pull-up reps") { repository.removePullUpSet(setId) }
+                                } else {
+                                    val setId = repository.addSet(reps)
+                                    showUndo("Added $reps reps") { repository.removeSet(setId) }
+                                }
                             }
-                            showPushUpDialog = false
+                            setDialog = null
                         }
                     },
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = HydraColors.Lime,
+                        containerColor = if (pullUp) PullUpButtonGold else HydraColors.Lime,
                         contentColor = HydraColors.Navy
                     ),
-                    modifier = Modifier.testTag("save_set_button")
+                    modifier = Modifier.testTag(if (pullUp) "save_pullup_set_button" else "save_set_button")
                 ) {
                     Text("Save Set")
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showPushUpDialog = false }) {
+                TextButton(onClick = { setDialog = null }) {
                     Text("Cancel", color = HydraColors.Muted)
                 }
             }
@@ -541,401 +486,165 @@ fun DashboardScreen(
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ProgressRing(progress: Float, color: Color, modifier: Modifier, strokeDp: Float = 10f) {
+    Canvas(modifier) {
+        val stroke = strokeDp.dp.toPx()
+        val diameter = size.minDimension - stroke
+        val origin = Offset((size.width - diameter) / 2, (size.height - diameter) / 2)
+        drawArc(Color(0xFFDCEEF0), -90f, 360f, false, origin, Size(diameter, diameter), style = Stroke(stroke))
+        drawArc(Brush.sweepGradient(listOf(color, HydraColors.PrimaryTeal, color)), -90f, progress.coerceIn(0f, 1f) * 360f,
+            false, origin, Size(diameter, diameter), style = Stroke(stroke, cap = StrokeCap.Round))
+    }
+}
+
+@Composable
+private fun HabitHeading(icon: Int, title: String, subtitle: String) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Image(painterResource(icon), null, Modifier.size(28.dp))
+        Spacer(Modifier.width(6.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = HydraColors.Navy)
+            Text(subtitle, fontSize = 11.sp, color = HydraColors.Muted)
+        }
+    }
+}
+
 @Composable
 private fun WaterCard(
-    modifier: Modifier = Modifier,
+    modifier: Modifier,
     waterMl: Int,
     goalMl: Int,
     onAddQuick: (Int) -> Unit,
-    onCustomClick: () -> Unit
+    onCustomClick: () -> Unit,
+    onHistoryClick: () -> Unit
 ) {
-    Card(
-        modifier = modifier
-            .border(1.dp, Color(0xFFD6F3F1), RoundedCornerShape(22.dp))
-            .testTag("water_card"),
-        shape = RoundedCornerShape(22.dp),
-        colors = CardDefaults.cardColors(containerColor = HydraColors.SurfaceAqua),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-    ) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            // Low-contrast decorative accent lines
-            Canvas(modifier = Modifier.matchParentSize()) {
-                val path = Path().apply {
-                    moveTo(size.width * 0.2f, size.height)
-                    cubicTo(
-                        size.width * 0.5f, size.height * 0.7f,
-                        size.width * 0.8f, size.height * 0.9f,
-                        size.width, size.height * 0.6f
-                    )
-                    lineTo(size.width, size.height)
-                    close()
-                }
-                drawPath(path, color = Color(0xFF0CC5BB).copy(alpha = 0.05f))
-            }
-
-            Column(
-                modifier = Modifier.fillMaxSize().padding(12.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+    Card(modifier.border(1.dp, Color(0xFFCAF0EF), RoundedCornerShape(22.dp)).testTag("water_card"),
+        shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = HydraColors.SurfaceAqua)) {
+        Column(Modifier.fillMaxWidth().padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            HabitHeading(R.drawable.ic_habit_water, "Water", "Stay hydrated")
+            Spacer(Modifier.height(14.dp))
+            val progress = waterMl.toFloat() / goalMl.coerceAtLeast(1)
+            Box(
+                Modifier.size(142.dp).testTag("water_history_button")
+                    .clickable(role = Role.Button, onClickLabel = "View water history", onClick = onHistoryClick),
+                contentAlignment = Alignment.Center
             ) {
-                // Header Row: Drop Icon + Title + Subtitle
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.Top
-                ) {
-                    Image(
-                        painter = painterResource(R.drawable.ic_habit_water),
-                        contentDescription = "Water Icon",
-                        modifier = Modifier.size(32.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Column {
-                        Text(
-                            text = "Water",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 15.sp,
-                            color = HydraColors.Navy
-                        )
-                        Text(
-                            text = "Stay hydrated",
-                            fontSize = 11.sp,
-                            color = HydraColors.Muted
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                // Circular Progress Ring
-                val progressFraction = min(1f, waterMl.toFloat() / goalMl.coerceAtLeast(1))
-                val percent = if (goalMl > 0) (waterMl.toFloat() / goalMl * 100).toInt() else 0
-
-                Box(
-                    modifier = Modifier.size(126.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Canvas(modifier = Modifier.fillMaxSize()) {
-                        val strokeWidth = 10.dp.toPx()
-                        val diameter = size.minDimension - strokeWidth
-                        val topLeft = Offset(strokeWidth / 2, strokeWidth / 2)
-
-                        // Track
-                        drawArc(
-                            color = Color(0xFFD4EFF0),
-                            startAngle = -90f,
-                            sweepAngle = 360f,
-                            useCenter = false,
-                            topLeft = topLeft,
-                            size = Size(diameter, diameter),
-                            style = Stroke(width = strokeWidth)
-                        )
-
-                        // Progress arc
-                        drawArc(
-                            brush = Brush.sweepGradient(
-                                listOf(HydraColors.Aqua, HydraColors.PrimaryTeal, HydraColors.Aqua)
-                            ),
-                            startAngle = -90f,
-                            sweepAngle = progressFraction * 360f,
-                            useCenter = false,
-                            topLeft = topLeft,
-                            size = Size(diameter, diameter),
-                            style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
-                        )
-                    }
-
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally
+                ProgressRing(progress, HydraColors.Aqua, Modifier.fillMaxSize())
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Image(painterResource(R.drawable.ic_hydra_drop), null, Modifier.size(22.dp))
+                    Text("$waterMl ml", fontSize = if (waterMl > 99999) 16.sp else 21.sp, fontWeight = FontWeight.ExtraBold, color = HydraColors.DeepTeal)
+                    Text("of $goalMl ml", fontSize = 12.sp, color = HydraColors.Muted)
+                    Row(
+                        Modifier.background(Color(0xFFCEF7EF), RoundedCornerShape(20.dp))
+                            .padding(horizontal = 8.dp, vertical = 2.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Image(
-                            painter = painterResource(R.drawable.ic_hydra_drop),
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = "$waterMl ml",
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = HydraColors.Navy
-                        )
-                        Text(
-                            text = "of $goalMl ml",
-                            fontSize = 11.sp,
-                            color = HydraColors.Muted
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Box(
-                            modifier = Modifier
-                                .background(Color(0xFFDCF7F5), RoundedCornerShape(10.dp))
-                                .padding(horizontal = 7.dp, vertical = 2.dp)
-                        ) {
-                            Text(
-                                text = "$percent%",
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = HydraColors.DeepTeal
-                            )
-                        }
+                        Text("${(progress * 100).toInt()}%", fontSize = 13.sp, color = HydraColors.DeepTeal, fontWeight = FontWeight.Bold)
+                        Icon(Icons.Default.History, null, Modifier.size(14.dp), tint = HydraColors.DeepTeal)
                     }
                 }
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                // Quick add pill buttons (+150, +250, +500)
-                FlowRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                    maxItemsInEachRow = 2
-                ) {
-                    listOf(150, 250, 500).forEach { amount ->
-                        Button(
-                            onClick = { onAddQuick(amount) },
-                            modifier = Modifier
-                                .weight(1f)
-                                .heightIn(min = 48.dp)
-                                .testTag("add_water_$amount"),
-                            shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = Color.White,
-                                contentColor = HydraColors.DeepTeal
-                            ),
-                            contentPadding = PaddingValues(0.dp),
-                            elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.5.dp)
-                        ) {
-                            Text(
-                                text = "+$amount",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
+            }
+            Spacer(Modifier.height(14.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                listOf(150, 250, 500).forEach { amount ->
+                    OutlinedButton(onClick = { onAddQuick(amount) },
+                        modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("add_water_$amount"),
+                        shape = RoundedCornerShape(13.dp), contentPadding = PaddingValues(0.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF8EE7E3)),
+                        colors = ButtonDefaults.outlinedButtonColors(containerColor = Color(0xFFDDFBF9), contentColor = HydraColors.DeepTeal)) {
+                        Text("+$amount", fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                     }
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // Custom amount button
-                OutlinedButton(
-                    onClick = onCustomClick,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 48.dp)
-                        .testTag("custom_water_button"),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = HydraColors.DeepTeal),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFBCE8E5)),
-                    contentPadding = PaddingValues(0.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Edit,
-                        contentDescription = null,
-                        modifier = Modifier.size(14.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = "Custom amount",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
-                }
-            }
-        }
-    }
-
-@Composable
-private fun PushUpCard(
-    modifier: Modifier = Modifier,
-    reps: Int,
-    goalReps: Int,
-    sets: List<Int>,
-    onAddSetClick: () -> Unit
-) {
-    Card(
-        modifier = modifier
-            .border(1.dp, Color(0xFFE2F5CD), RoundedCornerShape(22.dp))
-            .testTag("pushup_card"),
-        shape = RoundedCornerShape(22.dp),
-        colors = CardDefaults.cardColors(containerColor = HydraColors.SurfaceLime),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-    ) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            // Low-contrast decorative accent lines
-            Canvas(modifier = Modifier.matchParentSize()) {
-                val path = Path().apply {
-                    moveTo(0f, size.height * 0.7f)
-                    cubicTo(
-                        size.width * 0.3f, size.height * 0.85f,
-                        size.width * 0.7f, size.height * 0.65f,
-                        size.width, size.height * 0.8f
-                    )
-                    lineTo(size.width, size.height)
-                    lineTo(0f, size.height)
-                    close()
-                }
-                drawPath(path, color = Color(0xFF8BD70F).copy(alpha = 0.05f))
-            }
-
-            Column(
-                modifier = Modifier.fillMaxSize().padding(12.dp)
-            ) {
-                // Header Row: Runner Silhouette + Title + Subtitle
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.Top
-                ) {
-                    Image(
-                        painter = painterResource(R.drawable.ic_habit_pushup),
-                        contentDescription = "Push-ups Icon",
-                        modifier = Modifier.size(32.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Column {
-                        Text(
-                            text = "Push-ups",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 15.sp,
-                            color = HydraColors.Navy
-                        )
-                        Text(
-                            text = "Build strength",
-                            fontSize = 11.sp,
-                            color = HydraColors.Muted
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(18.dp))
-
-                // Reps count: e.g. 72 / 100 reps
-                Column(
-                    horizontalAlignment = Alignment.Start,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(
-                        text = "$reps",
-                        fontSize = 32.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = HydraColors.Navy
-                    )
-                    Text(
-                        text = " / $goalReps reps",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = HydraColors.Muted,
-                        modifier = Modifier.padding(bottom = 4.dp, start = 4.dp)
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                // Linear Progress Bar in vivid lime green
-                val progressFraction = min(1f, reps.toFloat() / goalReps.coerceAtLeast(1))
-                LinearProgressIndicator(
-                    progress = { progressFraction },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(8.dp),
-                    color = HydraColors.Lime,
-                    trackColor = Color(0xFFDDECD0),
-                    strokeCap = StrokeCap.Round
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Set History
-                Text(
-                    text = "Set history",
-                    fontSize = 12.sp,
-                    color = HydraColors.Muted,
-                    fontWeight = FontWeight.Medium
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 34.dp)
-                        .background(Color(0xFFE8F6D6), RoundedCornerShape(10.dp))
-                        .padding(horizontal = 8.dp, vertical = 6.dp),
-                    contentAlignment = Alignment.CenterStart
-                ) {
-                    val setsText = if (sets.isEmpty()) "No sets yet" else
-                        sets.take(3).joinToString(", ") + if (sets.size > 3) " + ${sets.size - 3} more" else ""
-                    Text(
-                        text = setsText,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = HydraColors.Navy,
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                Spacer(Modifier.weight(1f))
-                // + Add Set button (prominent lime green button)
-                Button(
-                    onClick = onAddSetClick,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 48.dp)
-                        .testTag("add_set_button"),
-                    shape = RoundedCornerShape(14.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = HydraColors.Lime,
-                        contentColor = HydraColors.Navy
-                    ),
-                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 1.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Add,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = "Add Set",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-                }
-            }
-        }
-    }
-
-@Composable
-private fun SupplementCard(
-    modifier: Modifier = Modifier,
-    onContentHeight: (Int) -> Unit,
-    name: String,
-    subtitle: String,
-    iconRes: Int,
-    isDone: Boolean,
-    backgroundColor: Color,
-    testTag: String,
-    onToggle: (Boolean) -> Unit
-) {
-    Card(
-        modifier = modifier
-            .testTag(testTag)
-            .clickable { onToggle(!isDone) },
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = backgroundColor),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-    ) {
-        Column(Modifier.fillMaxWidth().onSizeChanged { onContentHeight(it.height) }.padding(12.dp)) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Image(painterResource(iconRes), null, Modifier.size(30.dp), contentScale = ContentScale.Fit)
-                Box(Modifier.size(28.dp).background(if (isDone) Color(0xFFD7F5D4) else Color.White, CircleShape)
-                    .border(1.dp, HydraColors.Stroke, CircleShape), contentAlignment = Alignment.Center) {
-                    if (isDone) Icon(Icons.Default.Check, "Done", tint = HydraColors.DeepTeal, modifier = Modifier.size(20.dp))
                 }
             }
             Spacer(Modifier.height(8.dp))
-            Text(name, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = HydraColors.Navy)
-            Text(subtitle, fontSize = 12.sp, color = HydraColors.Muted)
-            Text(if (isDone) "Done ✓" else "Mark done", fontSize = 12.sp, color = HydraColors.DeepTeal, fontWeight = FontWeight.Bold)
+            OutlinedButton(onClick = onCustomClick, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("custom_water_button"),
+                shape = RoundedCornerShape(13.dp), contentPadding = PaddingValues(horizontal = 4.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF8EE7E3)), colors = ButtonDefaults.outlinedButtonColors(contentColor = HydraColors.DeepTeal)) {
+                Icon(Icons.Default.Edit, null, Modifier.size(16.dp)); Spacer(Modifier.width(4.dp))
+                Text("Custom amount", fontSize = 12.sp)
+            }
+        }
+    }
+}
+
+@Composable
+private fun RepCard(
+    modifier: Modifier,
+    habit: RepHabit,
+    reps: Int,
+    goalReps: Int,
+    sets: List<Int>,
+    onHistoryClick: (() -> Unit)? = null,
+    onAddSetClick: () -> Unit
+) {
+    val pullUp = habit == RepHabit.PullUp
+    val tag = if (pullUp) "pullup" else "pushup"
+    val track = if (pullUp) Color(0xFFF4E0B2) else Color(0xFFDFEBD9)
+    Card(modifier.border(1.dp, if (pullUp) track else Color(0xFFE0F1CE), RoundedCornerShape(22.dp)).testTag("${tag}_card"),
+        shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = if (pullUp) HydraColors.SurfaceGold else HydraColors.SurfaceLime)) {
+        Column(Modifier.fillMaxWidth().heightIn(min = 340.dp).padding(10.dp), verticalArrangement = Arrangement.SpaceBetween) {
+            HabitHeading(if (pullUp) R.drawable.ic_habit_pullup else R.drawable.ic_habit_pushup,
+                if (pullUp) "Pull-ups" else "Push-ups", "Build strength")
+            Column {
+                Text(buildAnnotatedString {
+                    withStyle(SpanStyle(fontSize = if (reps > 999) 28.sp else 38.sp, fontWeight = FontWeight.ExtraBold, color = HydraColors.DeepTeal)) { append("$reps") }
+                    withStyle(SpanStyle(fontSize = 16.sp, color = HydraColors.Muted)) { append(" / $goalReps reps") }
+                }, modifier = Modifier.testTag("${tag}_total"))
+                Spacer(Modifier.height(8.dp))
+                LinearProgressIndicator(progress = { (reps.toFloat() / goalReps.coerceAtLeast(1)).coerceIn(0f, 1f) },
+                    modifier = Modifier.fillMaxWidth().height(10.dp), color = if (pullUp) HydraColors.PullUpGold else HydraColors.Lime,
+                    trackColor = track, strokeCap = StrokeCap.Round,
+                    drawStopIndicator = {})
+                Spacer(Modifier.height(18.dp))
+                Text("Set history", fontSize = 12.sp, color = HydraColors.Muted)
+                Spacer(Modifier.height(6.dp))
+                val visible = sets.take(4)
+                val history = if (sets.isEmpty()) "No sets yet" else visible.joinToString(" + ") + if (sets.size > 4) " · +${sets.size - 4} sets" else ""
+                val historyShape = RoundedCornerShape(24.dp)
+                val historyPill = Modifier.fillMaxWidth()
+                    .background(if (pullUp) Color(0xFFFAE8B9) else Color(0xFFE5F8D3), historyShape)
+                if (onHistoryClick == null) {
+                    Text(history, historyPill.padding(10.dp), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = HydraColors.DeepTeal)
+                } else {
+                    Row(historyPill.heightIn(min = 48.dp).testTag("pullup_history_button")
+                        .clickable(role = Role.Button, onClick = onHistoryClick).padding(10.dp),
+                        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(history, Modifier.weight(1f), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = HydraColors.DeepTeal)
+                        Icon(Icons.Default.History, "View pull-up set history", Modifier.size(20.dp), tint = HydraColors.DeepTeal)
+                    }
+                }
+            }
+            Button(onClick = onAddSetClick, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                .testTag(if (pullUp) "add_pullup_set_button" else "add_set_button"),
+                shape = RoundedCornerShape(14.dp), colors = ButtonDefaults.buttonColors(
+                    containerColor = if (pullUp) PullUpButtonGold else HydraColors.LimeBright, contentColor = HydraColors.DeepTeal)) {
+                Icon(Icons.Default.Add, null, Modifier.size(20.dp)); Spacer(Modifier.width(4.dp))
+                Text("Add Set", fontSize = 15.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
+
+@Composable
+private fun SupplementCard(modifier: Modifier, name: String, subtitle: String, iconRes: Int, isDone: Boolean,
+    backgroundColor: Color, testTag: String, onToggle: () -> Unit) {
+    Card(modifier.testTag(testTag).clickable(onClick = onToggle), shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = backgroundColor)) {
+        Row(Modifier.fillMaxWidth().heightIn(min = 94.dp).padding(10.dp), verticalAlignment = Alignment.Top) {
+            Image(painterResource(iconRes), null, Modifier.padding(top = 4.dp).size(24.dp))
+            Spacer(Modifier.width(6.dp))
+            Column(Modifier.weight(1f)) {
+                Text(name, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = HydraColors.Navy)
+                Text(subtitle, fontSize = 11.sp, color = HydraColors.Muted)
+                Spacer(Modifier.height(5.dp))
+                Text(if (isDone) "Done" else "Mark done", Modifier.background(Color(0xFFDFF7C6), RoundedCornerShape(20.dp)).padding(horizontal = 8.dp, vertical = 2.dp),
+                    fontSize = 11.sp, color = HydraColors.DeepTeal, fontWeight = FontWeight.Bold)
+            }
+            Box(Modifier.size(22.dp).background(if (isDone) Color(0xFFDFF7C6) else Color.White, CircleShape), contentAlignment = Alignment.Center) {
+                if (isDone) Icon(Icons.Default.Check, "Done", Modifier.size(18.dp), tint = Color(0xFF40980D))
+            }
         }
     }
 }

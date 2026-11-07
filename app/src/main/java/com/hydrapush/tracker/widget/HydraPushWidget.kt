@@ -45,7 +45,7 @@ data class WidgetState(
         fun from(days: List<DayView>, today: LocalDate): WidgetState {
             val todayView = days.firstOrNull { it.snapshot.day == today.toString() }
             val snapshot = todayView?.snapshot
-            val streak = ProgressMath.currentPerfectStreak(days.map { it.metrics }, today)
+            val streak = ProgressMath.currentActiveStreak(days.map { it.metrics }, today)
             return WidgetState(
                 water = WidgetProgress.from(todayView?.totalWater ?: 0, snapshot?.waterGoalMl ?: 2500),
                 pushUps = WidgetProgress.from(todayView?.totalReps ?: 0, snapshot?.pushUpGoalReps ?: 100),
@@ -58,10 +58,6 @@ data class WidgetState(
 class HydraPushAppWidgetProvider : AppWidgetProvider() {
 
     companion object {
-        const val ACTION_LOG_WATER_QUICK = "com.hydrapush.tracker.ACTION_LOG_WATER_QUICK"
-        const val ACTION_LOG_PUSHUP_QUICK = "com.hydrapush.tracker.ACTION_LOG_PUSHUP_QUICK"
-        const val ACTION_TOGGLE_CREATINE = "com.hydrapush.tracker.ACTION_TOGGLE_CREATINE"
-        const val ACTION_TOGGLE_PROTEIN = "com.hydrapush.tracker.ACTION_TOGGLE_PROTEIN"
         private const val ACTION_REFRESH_MIDNIGHT = "com.hydrapush.tracker.ACTION_REFRESH_WIDGET_MIDNIGHT"
         private const val TAG = "HydraPushWidget"
         private val operations = Mutex()
@@ -140,31 +136,6 @@ class HydraPushAppWidgetProvider : AppWidgetProvider() {
             updateAllWidgets(context)
             return
         }
-        if (action !in setOf(ACTION_LOG_WATER_QUICK, ACTION_LOG_PUSHUP_QUICK, ACTION_TOGGLE_CREATINE, ACTION_TOGGLE_PROTEIN)) return
-
-        val pendingResult = goAsync()
-        CoroutineScope(Dispatchers.IO).launch {
-            try {
-                operations.withLock {
-                    val repo = TrackerRepository.getInstance(context)
-                    when (action) {
-                        ACTION_LOG_WATER_QUICK -> repo.addWater(250)
-                        ACTION_LOG_PUSHUP_QUICK -> repo.addSet(10)
-                        ACTION_TOGGLE_CREATINE -> repo.toggleSupplement(creatine = true)
-                        ACTION_TOGGLE_PROTEIN -> repo.toggleSupplement(creatine = false)
-                    }
-                    val manager = AppWidgetManager.getInstance(context)
-                    val ids = manager.getAppWidgetIds(ComponentName(context, HydraPushAppWidgetProvider::class.java))
-                    repo.reconcileToday()
-                    render(context, manager, ids, WidgetState.from(repo.days.first(), LocalDate.now()))
-                    scheduleMidnightRefresh(context)
-                }
-            } catch (error: Exception) {
-                Log.e(TAG, "Widget action failed", error)
-            } finally {
-                pendingResult.finish()
-            }
-        }
     }
 
     private fun render(context: Context, manager: AppWidgetManager, widgetIds: IntArray, state: WidgetState) {
@@ -182,22 +153,20 @@ class HydraPushAppWidgetProvider : AppWidgetProvider() {
             views.setProgressBar(R.id.widget_pushup_progress, 100, state.pushUps.percent.coerceIn(0, 100).toInt(), false)
             views.setTextViewText(R.id.widget_pushup_percent, "${state.pushUps.percent}%")
 
-            views.setOnClickPendingIntent(R.id.widget_root, pendingIntent(context, 10, null, activity = true))
+            views.setOnClickPendingIntent(R.id.widget_root, pendingIntent(context, 10))
             views.setContentDescription(R.id.widget_header, "Open HydraPush")
             views.setContentDescription(R.id.widget_water_card, "Water progress: ${state.water.total} of ${state.water.goal} milliliters, ${state.water.percent} percent. Tap to open HydraPush.")
             views.setContentDescription(R.id.widget_pushup_card, "Push-ups progress: ${state.pushUps.total} of ${state.pushUps.goal} reps, ${state.pushUps.percent} percent. Tap to open HydraPush.")
-            views.setOnClickPendingIntent(R.id.widget_header, pendingIntent(context, 10, null, activity = true))
-            views.setOnClickPendingIntent(R.id.widget_water_card, pendingIntent(context, 10, null, activity = true))
-            views.setOnClickPendingIntent(R.id.widget_pushup_card, pendingIntent(context, 10, null, activity = true))
+            views.setOnClickPendingIntent(R.id.widget_header, pendingIntent(context, 10))
+            views.setOnClickPendingIntent(R.id.widget_water_card, pendingIntent(context, 10))
+            views.setOnClickPendingIntent(R.id.widget_pushup_card, pendingIntent(context, 10))
             manager.updateAppWidget(widgetId, views)
         }
     }
 
-    private fun pendingIntent(context: Context, requestCode: Int, action: String?, activity: Boolean = false): PendingIntent {
-        val intent = if (activity) Intent(context, MainActivity::class.java) else
-            Intent(context, HydraPushAppWidgetProvider::class.java).setAction(action)
+    private fun pendingIntent(context: Context, requestCode: Int): PendingIntent {
+        val intent = Intent(context, MainActivity::class.java)
         val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        return if (activity) PendingIntent.getActivity(context, requestCode, intent, flags)
-        else PendingIntent.getBroadcast(context, requestCode, intent, flags)
+        return PendingIntent.getActivity(context, requestCode, intent, flags)
     }
 }

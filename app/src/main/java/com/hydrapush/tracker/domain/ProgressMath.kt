@@ -14,7 +14,10 @@ data class DailyMetrics(
     val creatineRequired: Boolean,
     val proteinRequired: Boolean,
     val creatineDone: Boolean,
-    val proteinDone: Boolean
+    val proteinDone: Boolean,
+    val pullUpReps: Int = 0,
+    val pullUpGoalReps: Int? = null,
+    val pullUpsRequired: Boolean = pullUpGoalReps != null
 ) {
     init {
         require(waterGoalMl > 0 && pushUpGoalReps > 0) { "Goals must be strictly positive" }
@@ -22,17 +25,24 @@ data class DailyMetrics(
 
     val waterMet: Boolean get() = waterMl >= waterGoalMl
     val pushUpsMet: Boolean get() = pushUpReps >= pushUpGoalReps
+    val pullUpsMet: Boolean get() = pullUpGoalReps?.let { pullUpReps >= it } == true
     val creatineMet: Boolean get() = !creatineRequired || creatineDone
     val proteinMet: Boolean get() = !proteinRequired || proteinDone
 
-    val perfect: Boolean get() = waterMet && pushUpsMet && creatineMet && proteinMet
+    val active: Boolean get() = waterMet || pushUpsMet || pullUpsMet ||
+        (creatineRequired && creatineDone) || (proteinRequired && proteinDone)
+
+    val perfect: Boolean get() = waterMet && pushUpsMet && creatineMet && proteinMet &&
+        (!pullUpsRequired || pullUpsMet)
 
     val progress: Float get() {
-        val total = 2 + (if (creatineRequired) 1 else 0) + (if (proteinRequired) 1 else 0)
+        val total = 2 + (if (creatineRequired) 1 else 0) + (if (proteinRequired) 1 else 0) +
+            (if (pullUpsRequired) 1 else 0)
         var earned = min(1f, waterMl.toFloat() / waterGoalMl) +
             min(1f, pushUpReps.toFloat() / pushUpGoalReps)
         if (creatineRequired && creatineDone) earned += 1f
         if (proteinRequired && proteinDone) earned += 1f
+        if (pullUpsRequired && pullUpGoalReps != null) earned += min(1f, pullUpReps.toFloat() / pullUpGoalReps)
         return (earned / total).coerceIn(0f, 1f)
     }
 }
@@ -80,6 +90,7 @@ object ProgressMath {
     private fun isMet(day: DailyMetrics, habit: String?): Boolean = when (habit) {
         "Water" -> day.waterMet
         "Push-ups" -> day.pushUpsMet
+        "Pull-ups" -> day.pullUpsMet
         "Creatine" -> day.creatineMet
         "Protein" -> day.proteinMet
         null -> day.perfect
@@ -89,31 +100,35 @@ object ProgressMath {
     private fun habitIsEnabled(day: DailyMetrics, habit: String?): Boolean = when (habit) {
         "Creatine" -> day.creatineRequired
         "Protein" -> day.proteinRequired
+        "Pull-ups" -> day.pullUpGoalReps != null
         else -> true
     }
 
     /**
      * Today being incomplete does not erase an active streak earned through yesterday.
-     * If yesterday was missed, current streak is 0 until today becomes perfect.
+     * If yesterday was missed, current streak is 0 until today's first completed goal.
      */
-    fun currentPerfectStreak(days: List<DailyMetrics>, today: LocalDate): Int {
+    fun currentActiveStreak(days: List<DailyMetrics>, today: LocalDate): Int =
+        currentStreak(days, today) { it.active }
+
+    private fun currentStreak(days: List<DailyMetrics>, today: LocalDate, qualifies: (DailyMetrics) -> Boolean): Int {
         val map = days.associateBy { it.day }
-        var cursor = if (map[today]?.perfect == true) today else today.minusDays(1)
+        var cursor = if (map[today]?.let(qualifies) == true) today else today.minusDays(1)
         var count = 0
-        while (map[cursor]?.perfect == true) {
+        while (map[cursor]?.let(qualifies) == true) {
             count++
             cursor = cursor.minusDays(1)
         }
         return count
     }
 
-    fun longestPerfectStreak(days: List<DailyMetrics>): Int {
+    fun longestActiveStreak(days: List<DailyMetrics>): Int {
         val sorted = days.sortedBy { it.day }
         var best = 0
         var running = 0
         var previous: LocalDate? = null
         for (d in sorted) {
-            running = if (d.perfect) {
+            running = if (d.active) {
                 if (previous == d.day.minusDays(1)) running + 1 else 1
             } else {
                 0
@@ -125,24 +140,8 @@ object ProgressMath {
     }
 
     /** Consecutive days hitting the specific habit goal */
-    fun currentHabitStreak(days: List<DailyMetrics>, today: LocalDate, habit: String): Int {
-        val map = days.associateBy { it.day }
-        fun isMet(m: DailyMetrics?): Boolean = when (habit) {
-            "Water" -> m?.waterMet == true
-            "Push-ups" -> m?.pushUpsMet == true
-            "Creatine" -> m?.creatineRequired == true && m.creatineDone
-            "Protein" -> m?.proteinRequired == true && m.proteinDone
-            else -> false
-        }
-
-        var cursor = if (isMet(map[today])) today else today.minusDays(1)
-        var count = 0
-        while (isMet(map[cursor])) {
-            count++
-            cursor = cursor.minusDays(1)
-        }
-        return count
-    }
+    fun currentHabitStreak(days: List<DailyMetrics>, today: LocalDate, habit: String): Int =
+        currentStreak(days, today) { habitIsEnabled(it, habit) && isMet(it, habit) }
 
     /**
      * Finds the best complete Monday–Sunday calendar week with the highest consistency.
@@ -165,13 +164,8 @@ object ProgressMath {
             for (i in 0..6) {
                 val d = monday.plusDays(i.toLong())
                 val m = map[d]
-                if (m != null) {
-                    val met = when (habit) {
-                        "Water" -> m.waterMet
-                        "Push-ups" -> m.pushUpsMet
-                        else -> m.perfect
-                    }
-                    if (met) hits++
+                if (m != null && habitIsEnabled(m, habit)) {
+                    if (isMet(m, habit)) hits++
                     eligible++
                 }
             }
@@ -197,7 +191,7 @@ object ProgressMath {
     fun evaluateAchievements(days: List<DailyMetrics>): List<Achievement> {
         val sorted = days.sortedBy { it.day }
         val perfectDays = sorted.filter { it.perfect }
-        val maxStreak = longestPerfectStreak(sorted)
+        val maxStreak = longestActiveStreak(sorted)
         val maxWater = sorted.maxOfOrNull { it.waterMl } ?: 0
         val maxPushups = sorted.maxOfOrNull { it.pushUpReps } ?: 0
         val totalLifetimeReps = sorted.sumOf { it.pushUpReps }
@@ -218,7 +212,7 @@ object ProgressMath {
             Achievement(
                 id = "streak_3",
                 title = "3-Day Streak",
-                description = "Hit 3 consecutive perfect days",
+                description = "Complete at least one goal on 3 consecutive days",
                 iconEmoji = "🥉",
                 isUnlocked = maxStreak >= 3,
                 progressCurrent = min(3, maxStreak),
@@ -227,7 +221,7 @@ object ProgressMath {
             Achievement(
                 id = "streak_7",
                 title = "7-Day Streak",
-                description = "Maintain a full week of perfect days",
+                description = "Complete at least one goal each day for 7 days",
                 iconEmoji = "🥈",
                 isUnlocked = maxStreak >= 7,
                 progressCurrent = min(7, maxStreak),
@@ -236,7 +230,7 @@ object ProgressMath {
             Achievement(
                 id = "streak_30",
                 title = "30-Day Master",
-                description = "One month of unbreakable discipline",
+                description = "Complete at least one goal each day for 30 days",
                 iconEmoji = "👑",
                 isUnlocked = maxStreak >= 30,
                 progressCurrent = min(30, maxStreak),

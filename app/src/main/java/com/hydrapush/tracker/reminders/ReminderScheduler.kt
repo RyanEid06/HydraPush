@@ -27,12 +27,14 @@ import kotlinx.coroutines.launch
 object ReminderScheduler {
     const val CHANNEL_WATER = "channel_water_reminders"
     const val CHANNEL_PUSHUPS = "channel_pushup_reminders"
+    const val CHANNEL_PULLUPS = "channel_pullup_reminders"
     const val CHANNEL_SUPPLEMENTS = "channel_supplement_reminders"
 
     const val ID_WATER = 1001
     const val ID_PUSHUP = 1002
     const val ID_CREATINE = 1003
     const val ID_PROTEIN = 1004
+    const val ID_PULLUP = 1005
 
     fun createNotificationChannels(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -51,6 +53,13 @@ object ReminderScheduler {
                     NotificationManager.IMPORTANCE_DEFAULT
                 ).apply {
                     description = "Reminders to complete your push-up sets"
+                },
+                NotificationChannel(
+                    CHANNEL_PULLUPS,
+                    "Pull-up Reminders",
+                    NotificationManager.IMPORTANCE_DEFAULT
+                ).apply {
+                    description = "Reminders to complete your pull-up sets"
                 },
                 NotificationChannel(
                     CHANNEL_SUPPLEMENTS,
@@ -75,7 +84,7 @@ object ReminderScheduler {
 
         // Never keep wake-up alarms active when Android cannot show their notifications.
         if (!notificationsAllowed(context)) {
-            listOf(ID_WATER, ID_PUSHUP, ID_CREATINE, ID_PROTEIN).forEach {
+            listOf(ID_WATER, ID_PUSHUP, ID_PULLUP, ID_CREATINE, ID_PROTEIN).forEach {
                 cancel(context, alarmManager, it)
             }
             return
@@ -111,6 +120,21 @@ object ReminderScheduler {
             )
         } else {
             cancel(context, alarmManager, ID_PUSHUP)
+        }
+
+        if (settings.pullUpReminderEnabled) {
+            val hour = settings.pullUpReminderTimeMinutes / 60
+            val minute = settings.pullUpReminderTimeMinutes % 60
+            scheduleDailyRepeating(
+                context, alarmManager, ID_PULLUP,
+                hour = hour, minute = minute,
+                type = "pullup", title = "Pull-up reminder",
+                message = "Log a set of pull-ups toward your daily goal!",
+                signature = "pullup:$hour:$minute:${java.util.TimeZone.getDefault().id}",
+                forceReschedule = forceReschedule
+            )
+        } else {
+            cancel(context, alarmManager, ID_PULLUP)
         }
 
         // Creatine reminder (only active if habit itself is enabled)
@@ -298,7 +322,7 @@ class ReminderNotificationReceiver : BroadcastReceiver() {
         val title = intent.getStringExtra("title") ?: "HydraPush Reminder"
         val message = intent.getStringExtra("message") ?: "Time for your daily fitness habits"
         val id = intent.getIntExtra("id", 1000)
-        if (type !in setOf("water", "pushup", "creatine", "protein")) return
+        if (type !in setOf("water", "pushup", "pullup", "creatine", "protein")) return
         val pendingResult = goAsync()
         CoroutineScope(Dispatchers.IO).launch {
             try {
@@ -306,6 +330,7 @@ class ReminderNotificationReceiver : BroadcastReceiver() {
                 val channelId = when (type) {
                     "water" -> ReminderScheduler.CHANNEL_WATER
                     "pushup" -> ReminderScheduler.CHANNEL_PUSHUPS
+                    "pullup" -> ReminderScheduler.CHANNEL_PULLUPS
                     else -> ReminderScheduler.CHANNEL_SUPPLEMENTS
                 }
                 val openAppIntent = Intent(context, MainActivity::class.java).apply {

@@ -2,6 +2,10 @@ package com.hydrapush.tracker.ui
 
 import android.content.Context
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.background
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.semantics.Role
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Home
@@ -24,6 +28,7 @@ import com.hydrapush.tracker.data.preferences.TrackerSettings
 import com.hydrapush.tracker.data.repository.TrackerRepository
 import com.hydrapush.tracker.data.repository.DayView
 import com.hydrapush.tracker.domain.Achievement
+import com.hydrapush.tracker.reminders.ReminderScheduler
 import com.hydrapush.tracker.ui.screens.DashboardScreen
 import com.hydrapush.tracker.ui.screens.SettingsScreen
 import com.hydrapush.tracker.ui.screens.StatsScreen
@@ -60,7 +65,10 @@ fun HydraPushApp(context: Context) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 localToday = LocalDate.now()
-                scope.launch { repository.reconcileToday() }
+                scope.launch {
+                    repository.reconcileToday()
+                    ReminderScheduler.scheduleAll(context.applicationContext, repository.settings.first())
+                }
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -71,7 +79,7 @@ fun HydraPushApp(context: Context) {
     LaunchedEffect(repository) {
         repository.reconcileToday()
         val currentSettings = repository.settings.first()
-        com.hydrapush.tracker.reminders.ReminderScheduler.scheduleAll(context.applicationContext, currentSettings)
+        ReminderScheduler.scheduleAll(context.applicationContext, currentSettings)
         while (true) {
             val now = LocalDate.now()
             if (now != localToday) {
@@ -87,31 +95,25 @@ fun HydraPushApp(context: Context) {
             containerColor = HydraColors.Background,
             contentWindowInsets = WindowInsets.systemBars,
             bottomBar = {
-                NavigationBar(
-                    containerColor = Color.White,
-                    tonalElevation = 2.dp,
-                    modifier = Modifier.testTag("bottom_nav_bar")
-                ) {
-                    listOf(
-                        Triple(MainTab.Dashboard, "Dashboard", Icons.Default.Home),
-                        Triple(MainTab.Stats, "Stats", Icons.Default.BarChart),
-                        Triple(MainTab.Settings, "Settings", Icons.Default.Settings)
-                    ).forEach { (destination, title, icon) ->
-                        val isSelected = currentTab == destination
-                        NavigationBarItem(
-                            selected = isSelected,
-                            onClick = { currentTab = destination },
-                            icon = { Icon(icon, contentDescription = title) },
-                            label = { Text(title, fontSize = 11.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium) },
-                            colors = NavigationBarItemDefaults.colors(
-                                selectedIconColor = HydraColors.PrimaryTeal,
-                                selectedTextColor = HydraColors.Navy,
-                                unselectedIconColor = HydraColors.Muted,
-                                unselectedTextColor = HydraColors.Muted,
-                                indicatorColor = Color(0xFFD7F5F0)
-                            ),
-                            modifier = Modifier.testTag("nav_item_${title.lowercase()}")
-                        )
+                Surface(color = Color.White, shape = RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp)) {
+                    Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 8.dp).testTag("bottom_nav_bar"),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        listOf(
+                            Triple(MainTab.Dashboard, "Dashboard", Icons.Default.Home),
+                            Triple(MainTab.Stats, "Stats", Icons.Default.BarChart),
+                            Triple(MainTab.Settings, "Settings", Icons.Default.Settings)
+                        ).forEach { (destination, title, icon) ->
+                            val selected = currentTab == destination
+                            Column(Modifier.weight(1f)
+                                .background(if (selected) Color(0xFFD5FAF5) else Color.Transparent, RoundedCornerShape(28.dp))
+                                .selectable(selected = selected, role = Role.Tab, onClick = { currentTab = destination })
+                                .heightIn(min = 62.dp).padding(vertical = 6.dp).testTag("nav_item_${title.lowercase()}"),
+                                horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                                Icon(icon, title, Modifier.size(26.dp), tint = if (selected) HydraColors.DeepTeal else HydraColors.Muted)
+                                Text(title, fontSize = 12.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (selected) HydraColors.DeepTeal else HydraColors.Muted)
+                            }
+                        }
                     }
                 }
             }
@@ -122,8 +124,7 @@ fun HydraPushApp(context: Context) {
                     .padding(paddingValues)
                     .consumeWindowInsets(paddingValues)
             ) {
-                if (loadedDays == null || settings == null || loadedAchievements == null ||
-                    days.none { it.snapshot.day == localToday.toString() }) {
+                if (loadedDays == null || settings == null || loadedAchievements == null) {
                     CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
                 } else screenState.SaveableStateProvider(currentTab.name) {
                 when (currentTab) {

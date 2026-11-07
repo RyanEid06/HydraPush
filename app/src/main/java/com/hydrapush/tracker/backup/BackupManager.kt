@@ -1,7 +1,10 @@
 package com.hydrapush.tracker.backup
 
 import com.hydrapush.tracker.data.local.*
+import com.hydrapush.tracker.data.preferences.DEFAULT_PULL_UP_GOAL
+import com.hydrapush.tracker.data.preferences.DEFAULT_PULL_UP_REMINDER_TIME
 import com.hydrapush.tracker.data.preferences.TrackerSettings
+import com.hydrapush.tracker.domain.ValidationLimits
 import java.security.MessageDigest
 import java.time.LocalDate
 import java.time.format.DateTimeParseException
@@ -13,7 +16,10 @@ import org.json.JSONObject
  * Uses JSON format with versioning, SHA-256 integrity check, and strict schema validation.
  */
 object BackupManager {
-    const val CURRENT_BACKUP_VERSION = 1
+    const val CURRENT_BACKUP_VERSION = 2
+    // Previously importable entries must survive an export from the current app.
+    private val WATER_BACKUP_ENTRY = 1..10_000
+    private val PUSH_UP_BACKUP_SET = 1..2_000
     const val APP_ID = "com.hydrapush.tracker"
     const val MAX_BACKUP_FILE_BYTES = 15 * 1024 * 1024 // 15 MB limit
 
@@ -27,7 +33,8 @@ object BackupManager {
         val pushups: List<PushUpSetEntity>,
         val revisions: List<ConfigurationRevisionEntity>,
         val achievements: List<AchievementEntity>,
-        val settings: TrackerSettings
+        val settings: TrackerSettings,
+        val pullups: List<PullUpSetEntity>
     )
 
     fun isValidIsoDate(str: String): Boolean {
@@ -46,7 +53,8 @@ object BackupManager {
         pushups: List<PushUpSetEntity>,
         revisions: List<ConfigurationRevisionEntity>,
         achievements: List<AchievementEntity>,
-        settings: TrackerSettings
+        settings: TrackerSettings,
+        pullups: List<PullUpSetEntity> = emptyList()
     ): String {
         val root = JSONObject()
         root.put("appId", APP_ID)
@@ -59,6 +67,8 @@ object BackupManager {
             o.put("day", s.day)
             o.put("waterGoalMl", s.waterGoalMl)
             o.put("pushUpGoalReps", s.pushUpGoalReps)
+            o.put("pullUpGoalReps", s.pullUpGoalReps ?: JSONObject.NULL)
+            o.put("pullUpsRequired", s.pullUpsRequired)
             o.put("creatineRequired", s.creatineRequired)
             o.put("proteinRequired", s.proteinRequired)
             o.put("creatineDone", s.creatineDone)
@@ -91,6 +101,16 @@ object BackupManager {
         }
         root.put("pushups", pushArr)
 
+        val pullArr = JSONArray()
+        pullups.forEach { set ->
+            pullArr.put(JSONObject()
+                .put("id", set.id)
+                .put("day", set.day)
+                .put("reps", set.reps)
+                .put("createdAtEpochMs", set.createdAtEpochMs))
+        }
+        root.put("pullups", pullArr)
+
         val revArr = JSONArray()
         revisions.forEach { r ->
             val o = JSONObject()
@@ -98,6 +118,7 @@ object BackupManager {
             o.put("effectiveLocalDay", r.effectiveLocalDay)
             o.put("waterGoalMl", r.waterGoalMl)
             o.put("pushUpGoalReps", r.pushUpGoalReps)
+            o.put("pullUpGoalReps", r.pullUpGoalReps ?: JSONObject.NULL)
             o.put("creatineRequired", r.creatineRequired)
             o.put("proteinRequired", r.proteinRequired)
             o.put("recordedAtEpochMs", r.recordedAtEpochMs)
@@ -118,6 +139,7 @@ object BackupManager {
         val setObj = JSONObject()
         setObj.put("waterGoalMl", settings.waterGoalMl)
         setObj.put("pushUpGoalReps", settings.pushUpGoalReps)
+        setObj.put("pullUpGoalReps", settings.pullUpGoalReps)
         setObj.put("creatineEnabled", settings.creatineEnabled)
         setObj.put("proteinEnabled", settings.proteinEnabled)
         setObj.put("themeMode", "LIGHT")
@@ -126,6 +148,8 @@ object BackupManager {
         setObj.put("waterReminderIntervalHours", settings.waterReminderIntervalHours)
         setObj.put("pushUpReminderEnabled", settings.pushUpReminderEnabled)
         setObj.put("pushUpReminderTimeMinutes", settings.pushUpReminderTimeMinutes)
+        setObj.put("pullUpReminderEnabled", settings.pullUpReminderEnabled)
+        setObj.put("pullUpReminderTimeMinutes", settings.pullUpReminderTimeMinutes)
         setObj.put("creatineReminderEnabled", settings.creatineReminderEnabled)
         setObj.put("creatineReminderTimeMinutes", settings.creatineReminderTimeMinutes)
         setObj.put("proteinReminderEnabled", settings.proteinReminderEnabled)
@@ -178,9 +202,12 @@ object BackupManager {
             require(seenSnapshotDays.add(day)) { "Duplicate snapshot day in backup: $day" }
 
             val waterGoal = o.getInt("waterGoalMl")
-            require(waterGoal in 1..20000) { "Snapshot waterGoalMl out of range: $waterGoal" }
+            require(waterGoal in ValidationLimits.WATER_GOAL) { "Snapshot waterGoalMl out of range: $waterGoal" }
             val pushGoal = o.getInt("pushUpGoalReps")
-            require(pushGoal in 1..10000) { "Snapshot pushUpGoalReps out of range: $pushGoal" }
+            require(pushGoal in ValidationLimits.PUSH_UP_GOAL) { "Snapshot pushUpGoalReps out of range: $pushGoal" }
+            val pullGoal = if (version >= 2) o.readHistoricalPullUpGoal() else null
+            val pullRequired = version >= 2 && o.getBoolean("pullUpsRequired")
+            require(!pullRequired || pullGoal != null) { "Missing goal for required Pull-Ups on $day" }
 
             snapshots.add(
                 DailySnapshotEntity(
@@ -194,7 +221,9 @@ object BackupManager {
                     requirementsRevisionId = if (o.has("requirementsRevisionId") && !o.isNull("requirementsRevisionId")) {
                         o.getLong("requirementsRevisionId")
                     } else null,
-                    createdAtEpochMs = o.optLong("createdAtEpochMs", System.currentTimeMillis())
+                    createdAtEpochMs = o.optLong("createdAtEpochMs", System.currentTimeMillis()),
+                    pullUpGoalReps = pullGoal,
+                    pullUpsRequired = pullRequired
                 )
             )
         }
@@ -213,7 +242,7 @@ object BackupManager {
             val day = o.getString("day")
             require(isValidIsoDate(day)) { "Invalid water entry date: $day" }
             val amount = o.getInt("amountMl")
-            require(amount in 1..10000) { "Water amountMl out of range: $amount" }
+            require(amount in WATER_BACKUP_ENTRY) { "Water amountMl out of range: $amount" }
 
             water.add(
                 WaterEntryEntity(
@@ -239,7 +268,7 @@ object BackupManager {
             val day = o.getString("day")
             require(isValidIsoDate(day)) { "Invalid push-up set date: $day" }
             val reps = o.getInt("reps")
-            require(reps in 1..2000) { "Push-up reps out of range: $reps" }
+            require(reps in PUSH_UP_BACKUP_SET) { "Push-up reps out of range: $reps" }
 
             pushups.add(
                 PushUpSetEntity(
@@ -249,6 +278,23 @@ object BackupManager {
                     createdAtEpochMs = o.optLong("createdAtEpochMs", System.currentTimeMillis())
                 )
             )
+        }
+
+        val pullups = mutableListOf<PullUpSetEntity>()
+        if (version >= 2) {
+            val pullArr = root.getJSONArray("pullups")
+            val seenPullUpIds = mutableSetOf<Long>()
+            val activeDays = snapshots.filter { it.pullUpGoalReps != null }.mapTo(hashSetOf()) { it.day }
+            for (i in 0 until pullArr.length()) {
+                val o = pullArr.getJSONObject(i)
+                val id = o.getLong("id")
+                require(id > 0 && seenPullUpIds.add(id)) { "Invalid or duplicate pull-up set id: $id" }
+                val day = o.getString("day")
+                require(day in activeDays) { "Pull-up set has no matching active day: $day" }
+                val reps = o.getInt("reps")
+                require(reps in ValidationLimits.PULL_UP_SET) { "Pull-up reps out of range: $reps" }
+                pullups.add(PullUpSetEntity(id, day, reps, o.getLong("createdAtEpochMs")))
+            }
         }
 
         // Validate revisions
@@ -266,9 +312,9 @@ object BackupManager {
                 val effDay = o.getString("effectiveLocalDay")
                 require(isValidIsoDate(effDay)) { "Invalid revision effectiveLocalDay: $effDay" }
                 val waterGoal = o.getInt("waterGoalMl")
-                require(waterGoal in 1..20000) { "Revision waterGoalMl out of range: $waterGoal" }
+                require(waterGoal in ValidationLimits.WATER_GOAL) { "Revision waterGoalMl out of range: $waterGoal" }
                 val pushGoal = o.getInt("pushUpGoalReps")
-                require(pushGoal in 1..10000) { "Revision pushUpGoalReps out of range: $pushGoal" }
+                require(pushGoal in ValidationLimits.PUSH_UP_GOAL) { "Revision pushUpGoalReps out of range: $pushGoal" }
 
                 revisions.add(
                     ConfigurationRevisionEntity(
@@ -278,7 +324,8 @@ object BackupManager {
                         pushUpGoalReps = pushGoal,
                         creatineRequired = o.getBoolean("creatineRequired"),
                         proteinRequired = o.getBoolean("proteinRequired"),
-                        recordedAtEpochMs = o.optLong("recordedAtEpochMs", System.currentTimeMillis())
+                        recordedAtEpochMs = o.optLong("recordedAtEpochMs", System.currentTimeMillis()),
+                        pullUpGoalReps = if (version >= 2) o.readHistoricalPullUpGoal() else null
                     )
                 )
             }
@@ -315,16 +362,21 @@ object BackupManager {
 
         // Validate settings
         val setObj = root.optJSONObject("settings")
+        val pullUpSettings = if (version >= 2) root.getJSONObject("settings") else null
         val waterGoal = setObj?.optInt("waterGoalMl", 2500) ?: 2500
-        require(waterGoal in 1..20000) { "Settings waterGoalMl out of range: $waterGoal" }
+        require(waterGoal in ValidationLimits.WATER_GOAL) { "Settings waterGoalMl out of range: $waterGoal" }
         val pushGoal = setObj?.optInt("pushUpGoalReps", 100) ?: 100
-        require(pushGoal in 1..10000) { "Settings pushUpGoalReps out of range: $pushGoal" }
+        require(pushGoal in ValidationLimits.PUSH_UP_GOAL) { "Settings pushUpGoalReps out of range: $pushGoal" }
+        val pullGoal = pullUpSettings?.getInt("pullUpGoalReps") ?: DEFAULT_PULL_UP_GOAL
+        require(pullGoal in ValidationLimits.PULL_UP_GOAL) { "Settings pullUpGoalReps out of range: $pullGoal" }
 
         val waterInterval = setObj?.optInt("waterReminderIntervalHours", 2) ?: 2
         require(waterInterval in 1..24) { "Settings waterReminderIntervalHours out of range: $waterInterval" }
 
         val pushTime = setObj?.optInt("pushUpReminderTimeMinutes", 18 * 60) ?: (18 * 60)
         require(pushTime in 0..1439) { "Settings pushUpReminderTimeMinutes out of range: $pushTime" }
+        val pullTime = pullUpSettings?.getInt("pullUpReminderTimeMinutes") ?: DEFAULT_PULL_UP_REMINDER_TIME
+        require(pullTime in 0..1439) { "Settings pullUpReminderTimeMinutes out of range: $pullTime" }
 
         val creatineTime = setObj?.optInt("creatineReminderTimeMinutes", 9 * 60) ?: (9 * 60)
         require(creatineTime in 0..1439) { "Settings creatineReminderTimeMinutes out of range: $creatineTime" }
@@ -339,6 +391,7 @@ object BackupManager {
         val settings = TrackerSettings(
             waterGoalMl = waterGoal,
             pushUpGoalReps = pushGoal,
+            pullUpGoalReps = pullGoal,
             creatineEnabled = setObj?.optBoolean("creatineEnabled", true) ?: true,
             proteinEnabled = setObj?.optBoolean("proteinEnabled", true) ?: true,
             themeMode = "LIGHT",
@@ -346,6 +399,8 @@ object BackupManager {
             waterReminderIntervalHours = waterInterval,
             pushUpReminderEnabled = setObj?.optBoolean("pushUpReminderEnabled", false) ?: false,
             pushUpReminderTimeMinutes = pushTime,
+            pullUpReminderEnabled = pullUpSettings?.getBoolean("pullUpReminderEnabled") ?: false,
+            pullUpReminderTimeMinutes = pullTime,
             creatineReminderEnabled = setObj?.optBoolean("creatineReminderEnabled", false) ?: false,
             creatineReminderTimeMinutes = creatineTime,
             proteinReminderEnabled = setObj?.optBoolean("proteinReminderEnabled", false) ?: false,
@@ -360,8 +415,16 @@ object BackupManager {
             pushups = pushups,
             revisions = revisions,
             achievements = achievements,
-            settings = settings
+            settings = settings,
+            pullups = pullups
         )
+    }
+
+    private fun JSONObject.readHistoricalPullUpGoal(): Int? {
+        val key = "pullUpGoalReps"
+        require(has(key)) { "Missing historical pull-up goal" }
+        if (isNull(key)) return null
+        return getInt(key).also { require(it in ValidationLimits.PULL_UP_GOAL) { "Historical pull-up goal out of range: $it" } }
     }
 
     private fun sha256(input: String): String {

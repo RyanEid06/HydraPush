@@ -1,8 +1,11 @@
-<?xml version="1.0" encoding="utf-8"?>
-<vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp"
-    android:height="108dp"
-    android:viewportWidth="108"
-    android:viewportHeight="108">
-    <path android:fillColor="#EFFBFB" android:pathData="M0,0h108v108h-108z" />
-</vector>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt">
+    <item>
+        <shape android:shape="rectangle">
+            <gradient android:angle="315" android:startColor="#007E82" android:endColor="#002B35" />
+        </shape>
+    </item>
+    <!-- The artwork covers the entire adaptive mask; extra layer bleed preserves all launcher shapes. -->
+    <item>
+        <inset android:drawable="@drawable/launcher_artwork" android:insetLeft="3%" android:insetRight="3%" android:insetTop="5%" android:insetBottom="1%" />
+    </item>
+</layer-list>

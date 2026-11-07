@@ -25,6 +25,34 @@ class ReminderSchedulerTest {
         ReminderScheduler.scheduleAll(context, TrackerSettings(), forceReschedule = true)
     }
 
+    @Test @Config(sdk = [33])
+    fun deniedNotificationPermissionCancelsAllReminderAlarms() {
+        val application = ApplicationProvider.getApplicationContext<android.app.Application>()
+        shadowOf(application).grantPermissions(android.Manifest.permission.POST_NOTIFICATIONS)
+        val settings = TrackerSettings(waterReminderEnabled = true, pushUpReminderEnabled = true,
+            creatineReminderEnabled = true, proteinReminderEnabled = true, pullUpReminderEnabled = true)
+        ReminderScheduler.scheduleAll(context, settings)
+        assertEquals(5, alarms.size)
+        shadowOf(application).denyPermissions(android.Manifest.permission.POST_NOTIFICATIONS)
+        ReminderScheduler.scheduleAll(context, settings)
+        assertFalse(ReminderScheduler.notificationsAllowed(context))
+        assertTrue(alarms.isEmpty())
+    }
+
+    @Test fun pullUpAlarmHasItsOwnScheduleAndCancellation() {
+        val settings = TrackerSettings(pushUpReminderEnabled = true, pullUpReminderEnabled = true,
+            pushUpReminderTimeMinutes = 480, pullUpReminderTimeMinutes = 615)
+        ReminderScheduler.scheduleAll(context, settings, forceReschedule = true)
+        val pullUp = alarms.single { shadowOf(it.operation).requestCode == ReminderScheduler.ID_PULLUP }
+        val trigger = java.util.Calendar.getInstance().apply { timeInMillis = pullUp.triggerAtTime }
+        assertEquals(10, trigger.get(java.util.Calendar.HOUR_OF_DAY))
+        assertEquals(15, trigger.get(java.util.Calendar.MINUTE))
+        assertEquals("pullup", shadowOf(pullUp.operation).savedIntent.getStringExtra("type"))
+
+        ReminderScheduler.scheduleAll(context, settings.copy(pullUpReminderEnabled = false))
+        assertEquals(ReminderScheduler.ID_PUSHUP, shadowOf(alarms.single().operation).requestCode)
+    }
+
     @Test fun openingAppAndUnrelatedGoalEditsKeepTheWaterTrigger() {
         val settings = TrackerSettings(waterReminderEnabled = true)
         ReminderScheduler.scheduleAll(context, settings)

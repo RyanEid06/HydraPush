@@ -36,6 +36,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import com.hydrapush.tracker.domain.ValidationLimits
 import com.hydrapush.tracker.BuildConfig
 import com.hydrapush.tracker.R
 import com.hydrapush.tracker.data.preferences.TrackerSettings
@@ -207,6 +208,18 @@ fun SettingsScreen(
                         goalDialogTarget = "pushup"
                     }
                 )
+
+                HorizontalDivider(color = Color(0xFFF0F5F5), modifier = Modifier.padding(start = 50.dp, top = 4.dp, bottom = 4.dp))
+                SettingRow(
+                    iconRes = R.drawable.ic_habit_pullup,
+                    title = "Pull-up Goal",
+                    value = "${settings.pullUpGoalReps} reps",
+                    onClick = {
+                        goalInput = settings.pullUpGoalReps.toString()
+                        goalError = null
+                        goalDialogTarget = "pullup"
+                    }
+                )
             }
 
             Spacer(modifier = Modifier.height(14.dp))
@@ -248,37 +261,41 @@ fun SettingsScreen(
 
                 HorizontalDivider(color = Color(0xFFF0F5F5), modifier = Modifier.padding(start = 50.dp, top = 4.dp, bottom = 4.dp))
 
-                // Push-ups (Permanently On)
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    SettingIcon(iconRes = R.drawable.ic_habit_pushup)
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Text(
-                        text = "Push-ups",
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 14.sp,
-                        color = HydraColors.Navy,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.Lock,
-                            contentDescription = "Locked",
-                            tint = HydraColors.Muted,
-                            modifier = Modifier.size(14.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
+                for ((habit, icon) in listOf(
+                    "Push-ups" to R.drawable.ic_habit_pushup,
+                    "Pull-ups" to R.drawable.ic_habit_pullup
+                )) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        SettingIcon(iconRes = icon)
+                        Spacer(modifier = Modifier.width(10.dp))
                         Text(
-                            text = "Always active",
-                            fontSize = 12.sp,
-                            color = HydraColors.Muted
+                            text = habit,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 14.sp,
+                            color = HydraColors.Navy,
+                            modifier = Modifier.weight(1f)
                         )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Lock,
+                                contentDescription = "Locked",
+                                tint = HydraColors.Muted,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "Always active",
+                                fontSize = 12.sp,
+                                color = HydraColors.Muted
+                            )
+                        }
                     }
-                }
 
-                HorizontalDivider(color = Color(0xFFF0F5F5), modifier = Modifier.padding(start = 50.dp, top = 4.dp, bottom = 4.dp))
+                    HorizontalDivider(color = Color(0xFFF0F5F5), modifier = Modifier.padding(start = 50.dp, top = 4.dp, bottom = 4.dp))
+                }
 
                 // Creatine (Toggleable)
                 Row(
@@ -397,31 +414,35 @@ fun SettingsScreen(
 
                 HorizontalDivider(color = Color(0xFFF0F5F5), modifier = Modifier.padding(start = 50.dp, top = 4.dp, bottom = 4.dp))
 
-                // Push-up Reminder
-                ReminderRow(
-                    iconRes = R.drawable.ic_habit_pushup,
-                    title = "Push-up Reminder",
-                    subtitle = formatMinutesToTime(settings.pushUpReminderTimeMinutes) + if (notificationsAllowed) "" else " · Permission required",
-                    enabled = settings.pushUpReminderEnabled && notificationsAllowed,
-                    onToggle = { isEnabled ->
-                        handleReminderToggle(
-                            target = "pushup", enable = isEnabled, context = context,
-                            launcher = notificationPermissionLauncher,
-                            permissionAlreadyGranted = notificationsAllowed,
-                            onPermissionRequest = { pendingReminderEnableTarget = it },
-                            onPersist = { target, enabled ->
-                                scope.launch { repo.updateSettings { it.withReminderEnabled(target, enabled) } }
-                            }
-                        )
-                    },
-                    onClickSchedule = {
-                        customHour = settings.pushUpReminderTimeMinutes / 60
-                        customMinute = settings.pushUpReminderTimeMinutes % 60
-                        showTimeDialogTarget = "pushup_time"
-                    }
-                )
+                for (isPullUp in listOf(false, true)) {
+                    val time = if (isPullUp) settings.pullUpReminderTimeMinutes else settings.pushUpReminderTimeMinutes
+                    val enabled = if (isPullUp) settings.pullUpReminderEnabled else settings.pushUpReminderEnabled
+                    val habit = if (isPullUp) "pullup" else "pushup"
+                    ReminderRow(
+                        iconRes = if (isPullUp) R.drawable.ic_habit_pullup else R.drawable.ic_habit_pushup,
+                        title = if (isPullUp) "Pull-up Reminder" else "Push-up Reminder",
+                        subtitle = formatMinutesToTime(context, time) + if (notificationsAllowed) "" else " · Permission required",
+                        enabled = enabled && (isPullUp || notificationsAllowed),
+                        onToggle = { isEnabled ->
+                            handleReminderToggle(
+                                target = habit, enable = isEnabled, context = context,
+                                launcher = notificationPermissionLauncher,
+                                permissionAlreadyGranted = notificationsAllowed,
+                                onPermissionRequest = { pendingReminderEnableTarget = it },
+                                onPersist = { target, enabled ->
+                                    scope.launch { repo.updateSettings { it.withReminderEnabled(target, enabled) } }
+                                }
+                            )
+                        },
+                        onClickSchedule = {
+                            customHour = time / 60
+                            customMinute = time % 60
+                            showTimeDialogTarget = "${habit}_time"
+                        }
+                    )
 
-                HorizontalDivider(color = Color(0xFFF0F5F5), modifier = Modifier.padding(start = 50.dp, top = 4.dp, bottom = 4.dp))
+                    HorizontalDivider(color = Color(0xFFF0F5F5), modifier = Modifier.padding(start = 50.dp, top = 4.dp, bottom = 4.dp))
+                }
 
                 // Creatine Reminder
                 ReminderRow(
@@ -429,7 +450,7 @@ fun SettingsScreen(
                     title = "Creatine Reminder",
                     subtitle = when {
                         !settings.creatineEnabled -> "Habit deactivated"
-                        else -> formatMinutesToTime(settings.creatineReminderTimeMinutes) + if (notificationsAllowed) "" else " · Permission required"
+                        else -> formatMinutesToTime(context, settings.creatineReminderTimeMinutes) + if (notificationsAllowed) "" else " · Permission required"
                     },
                     enabled = settings.creatineEnabled && settings.creatineReminderEnabled && notificationsAllowed,
                     isHabitActive = settings.creatineEnabled,
@@ -461,7 +482,7 @@ fun SettingsScreen(
                     title = "Protein Shake Reminder",
                     subtitle = when {
                         !settings.proteinEnabled -> "Habit deactivated"
-                        else -> formatMinutesToTime(settings.proteinReminderTimeMinutes) + if (notificationsAllowed) "" else " · Permission required"
+                        else -> formatMinutesToTime(context, settings.proteinReminderTimeMinutes) + if (notificationsAllowed) "" else " · Permission required"
                     },
                     enabled = settings.proteinEnabled && settings.proteinReminderEnabled && notificationsAllowed,
                     isHabitActive = settings.proteinEnabled,
@@ -533,12 +554,17 @@ fun SettingsScreen(
     // Goal Edit Dialog
     goalDialogTarget?.let { target ->
         val isWater = target == "water"
-        val maxLimit = if (isWater) 20000 else 10000
+        val (habitName, limit) = when (target) {
+            "water" -> "Water" to ValidationLimits.WATER_GOAL
+            "pullup" -> "Pull-up" to ValidationLimits.PULL_UP_GOAL
+            else -> "Push-up" to ValidationLimits.PUSH_UP_GOAL
+        }
+        val maxLimit = limit.last
         AlertDialog(
             onDismissRequest = { goalDialogTarget = null },
             title = {
                 Text(
-                    text = if (isWater) "Edit Daily Water Goal" else "Edit Daily Push-up Goal",
+                    text = "Edit Daily $habitName Goal",
                     fontWeight = FontWeight.Bold,
                     color = HydraColors.Navy
                 )
@@ -557,7 +583,7 @@ fun SettingsScreen(
                             goalInput = it.filter(Char::isDigit)
                             goalError = null
                         },
-                        label = { Text(if (isWater) "Water (ml)" else "Push-ups (reps)") },
+                        label = { Text(if (isWater) "Water (ml)" else "${habitName}s (reps)") },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         modifier = Modifier.fillMaxWidth().testTag("edit_goal_input")
@@ -572,19 +598,29 @@ fun SettingsScreen(
                 Button(
                     onClick = {
                         val value = goalInput.toIntOrNull()
-                        if (value == null || value !in 1..maxLimit) {
+                        if (value == null || value !in limit) {
                             goalError = "Enter an amount between 1 and $maxLimit"
                         } else {
                             scope.launch {
                                 repo.updateSettings {
-                                    if (isWater) it.copy(waterGoalMl = value)
-                                    else it.copy(pushUpGoalReps = value)
+                                    when (target) {
+                                        "water" -> it.copy(waterGoalMl = value)
+                                        "pullup" -> it.copy(pullUpGoalReps = value)
+                                        else -> it.copy(pushUpGoalReps = value)
+                                    }
                                 }
                             }
                             goalDialogTarget = null
                         }
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = if (isWater) HydraColors.PrimaryTeal else HydraColors.Lime),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = when (target) {
+                            "water" -> HydraColors.PrimaryTeal
+                            "pullup" -> HydraColors.SurfaceGold
+                            else -> HydraColors.Lime
+                        },
+                        contentColor = HydraColors.Navy
+                    ),
                     modifier = Modifier.testTag("save_goal_button")
                 ) {
                     Text("Save Goal")
@@ -607,6 +643,7 @@ fun SettingsScreen(
                     text = when (target) {
                         "water_interval" -> "Water Reminder Interval"
                         "pushup_time" -> "Push-up Reminder Time"
+                        "pullup_time" -> "Pull-up Reminder Time"
                         "creatine_time" -> "Creatine Reminder Time"
                         else -> "Protein Reminder Time"
                     },
@@ -647,11 +684,11 @@ fun SettingsScreen(
                         // Quick presets
                         FlowRow(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             listOf(
-                                "9:00 AM" to (9 * 60),
-                                "12:00 PM" to (12 * 60),
-                                "3:00 PM" to (15 * 60),
-                                "6:00 PM" to (18 * 60),
-                                "8:00 PM" to (20 * 60)
+                                formatMinutesToTime(context, 9 * 60) to (9 * 60),
+                                formatMinutesToTime(context, 12 * 60) to (12 * 60),
+                                formatMinutesToTime(context, 15 * 60) to (15 * 60),
+                                formatMinutesToTime(context, 18 * 60) to (18 * 60),
+                                formatMinutesToTime(context, 20 * 60) to (20 * 60)
                             ).forEach { (label, minutes) ->
                                 SuggestionChip(
                                     onClick = {
@@ -722,6 +759,7 @@ fun SettingsScreen(
                                 when (target) {
                                     "water_interval" -> s.copy(waterReminderIntervalHours = customHour)
                                     "pushup_time" -> s.copy(pushUpReminderTimeMinutes = minutes)
+                                    "pullup_time" -> s.copy(pullUpReminderTimeMinutes = minutes)
                                     "creatine_time" -> s.copy(creatineReminderTimeMinutes = minutes)
                                     "protein_time" -> s.copy(proteinReminderTimeMinutes = minutes)
                                     else -> s
@@ -948,20 +986,18 @@ private fun ReminderRow(
     }
 }
 
-private fun formatMinutesToTime(minutesSinceMidnight: Int): String {
-    val h24 = (minutesSinceMidnight / 60) % 24
-    val m = minutesSinceMidnight % 60
-    val amPm = if (h24 < 12) "AM" else "PM"
-    val h12 = when (val mod = h24 % 12) {
-        0 -> 12
-        else -> mod
+private fun formatMinutesToTime(context: Context, minutesSinceMidnight: Int): String {
+    val time = java.util.Calendar.getInstance().apply {
+        set(java.util.Calendar.HOUR_OF_DAY, minutesSinceMidnight / 60)
+        set(java.util.Calendar.MINUTE, minutesSinceMidnight % 60)
     }
-    return "%d:%02d %s".format(h12, m, amPm)
+    return android.text.format.DateFormat.getTimeFormat(context).format(time.time)
 }
 
 private fun TrackerSettings.withReminderEnabled(target: String, enabled: Boolean): TrackerSettings = when (target) {
     "water" -> copy(waterReminderEnabled = enabled)
     "pushup" -> copy(pushUpReminderEnabled = enabled)
+    "pullup" -> copy(pullUpReminderEnabled = enabled)
     "creatine" -> copy(creatineReminderEnabled = enabled)
     "protein" -> copy(proteinReminderEnabled = enabled)
     else -> this

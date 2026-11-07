@@ -12,6 +12,7 @@ object HydraColors {
     val SurfaceLime = Color(0xFFF3FCE9)
     val SurfaceCoral = Color(0xFFFFF0EA)
     val SurfaceBlue = Color(0xFFECF5FD)
+    val SurfaceGold = Color(0xFFFFF5DC)
 
     val PrimaryTeal = Color(0xFF0CC5BB)
     val DeepTeal = Color(0xFF07373B)
@@ -20,6 +21,7 @@ object HydraColors {
     val LimeBright = Color(0xFFA5E93F)
     val ProteinCoral = Color(0xFFFB7659)
     val SecondaryBlue = Color(0xFF46B5EF)
+    val PullUpGold = Color(0xFFB77808)
 
     val Navy = Color(0xFF153139)
     val TextPrimary = Color(0xFF153139)

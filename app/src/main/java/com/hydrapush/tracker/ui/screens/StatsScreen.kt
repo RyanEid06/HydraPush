@@ -13,6 +13,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
@@ -41,6 +43,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -50,11 +53,13 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.hydrapush.tracker.R
+import com.hydrapush.tracker.data.preferences.DEFAULT_PULL_UP_GOAL
 import com.hydrapush.tracker.data.repository.DayView
 import com.hydrapush.tracker.domain.Achievement
 import com.hydrapush.tracker.domain.DailyMetrics
 import com.hydrapush.tracker.domain.ProgressMath
 import com.hydrapush.tracker.ui.components.BrandHeader
+import com.hydrapush.tracker.ui.components.HistoryEntryRow
 import com.hydrapush.tracker.ui.components.SectionCard
 import com.hydrapush.tracker.ui.theme.HydraColors
 import java.time.LocalDate
@@ -95,10 +100,10 @@ fun StatsScreen(
     val allMetrics = remember(allDays) { allDays.map { it.metrics } }
 
     val streak = remember(allMetrics, today) {
-        ProgressMath.currentPerfectStreak(allMetrics, today)
+        ProgressMath.currentActiveStreak(allMetrics, today)
     }
-    val bestStreak = remember(allMetrics) {
-        ProgressMath.longestPerfectStreak(allMetrics)
+    val bestStreak = remember(allMetrics, today) {
+        ProgressMath.longestActiveStreak(allMetrics.filter { !it.day.isAfter(today) })
     }
 
     Column(
@@ -118,6 +123,8 @@ fun StatsScreen(
         } else {
             BrandHeader(subtitle = "Your progress & performance", showDateBar = false)
             StatsTitleAndRange(selectedRange = selectedRange, onSelectRange = { selectedRange = it })
+            Text("Today joins each rate or average once its goal is met.", fontSize = 10.sp, lineHeight = 14.sp, color = HydraColors.Muted,
+                modifier = Modifier.padding(top = 4.dp))
             Spacer(modifier = Modifier.height(12.dp))
             if (selectedTab != "Overview") {
                 StatsTabs(selectedTab = selectedTab, onSelectTab = {
@@ -139,19 +146,9 @@ fun StatsScreen(
                         onSelectTab = { selectedTab = it }
                     )
                 }
-                "Water" -> {
+                "Water", "Push-ups", "Pull-ups" -> {
                     HabitDrilldownTabContent(
-                        isWater = true,
-                        rangeDays = rangeDays,
-                        allDays = allDays,
-                        today = today,
-                        selectedRange = selectedRange,
-                        onOpenCalendar = { showCalendarHistory = true }
-                    )
-                }
-                "Push-ups" -> {
-                    HabitDrilldownTabContent(
-                        isWater = false,
+                        habitName = selectedTab,
                         rangeDays = rangeDays,
                         allDays = allDays,
                         today = today,
@@ -178,48 +175,77 @@ fun StatsScreen(
                 )
             },
             text = {
-                Column(modifier = Modifier.fillMaxWidth().heightIn(max = 320.dp).verticalScroll(rememberScrollState())) {
-                    val m = dayView.metrics
-                    Text(
-                        text = when {
-                            m.perfect -> "Perfect Day Completed"
-                            m.day == today -> "Today is in progress"
-                            m.day.isAfter(today) -> "Not applicable"
-                            else -> "Incomplete Day"
-                        },
-                        fontWeight = FontWeight.Bold,
-                        color = if (m.perfect) Color(0xFF279919) else HydraColors.Muted,
-                        fontSize = 13.sp
-                    )
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Text(
-                        text = "Water: ${dayView.totalWater} / ${dayView.snapshot.waterGoalMl} ml (${if (m.waterMet) "Goal Hit" else if (m.day == today) "In progress" else "Missed"})",
-                        fontSize = 13.sp
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = "Push-ups: ${dayView.totalReps} / ${dayView.snapshot.pushUpGoalReps} reps (${if (m.pushUpsMet) "Goal Hit" else if (m.day == today) "In progress" else "Missed"})",
-                        fontSize = 13.sp
-                    )
-                    if (dayView.sets.isNotEmpty()) {
+                val m = dayView.metrics
+                fun status(met: Boolean) = if (met) "Goal Hit" else if (m.day == today) "In progress" else "Missed"
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 380.dp).testTag("calendar_day_details"),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    item {
                         Text(
-                            text = "   Sets: ${dayView.sets.joinToString(" + ") { it.reps.toString() }}",
-                            fontSize = 12.sp,
-                            color = HydraColors.Muted
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(4.dp))
-                    if (dayView.snapshot.creatineRequired) {
-                        Text(
-                            text = "Creatine: ${if (dayView.snapshot.creatineDone) "Done ✓" else if (m.day == today) "Not yet" else "Missed ✗"}",
+                            text = when {
+                                m.perfect -> "Perfect Day Completed"
+                                m.day == today -> "Today is in progress"
+                                m.day.isAfter(today) -> "Not applicable"
+                                else -> "Incomplete Day"
+                            },
+                            fontWeight = FontWeight.Bold,
+                            color = if (m.perfect) Color(0xFF279919) else HydraColors.Muted,
                             fontSize = 13.sp
                         )
                     }
-                    if (dayView.snapshot.proteinRequired) {
+                    item {
+                        Spacer(Modifier.height(6.dp))
                         Text(
-                            text = "Protein Shake: ${if (dayView.snapshot.proteinDone) "Done ✓" else if (m.day == today) "Not yet" else "Missed ✗"}",
+                            text = "Water: ${m.waterMl} / ${m.waterGoalMl} ml (${status(m.waterMet)})",
+                            fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = HydraColors.DeepTeal
+                        )
+                    }
+                    if (dayView.waters.isEmpty()) item { Text("No water entries", fontSize = 12.sp, color = HydraColors.Muted) }
+                    items(dayView.waters, key = { "water_${it.id}" }) {
+                        HistoryEntryRow("+${it.amountMl} ml", it.createdAtEpochMs)
+                    }
+                    item {
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            text = "Push-ups: ${m.pushUpReps} / ${m.pushUpGoalReps} reps (${status(m.pushUpsMet)})",
                             fontSize = 13.sp
                         )
+                        if (dayView.sets.isNotEmpty()) {
+                            Text(
+                                text = "   Sets: ${dayView.sets.joinToString(" + ") { it.reps.toString() }}",
+                                fontSize = 12.sp,
+                                color = HydraColors.Muted
+                            )
+                        }
+                    }
+                    m.pullUpGoalReps?.let { goal ->
+                        item {
+                            Spacer(Modifier.height(6.dp))
+                            Text("Pull-ups: ${m.pullUpReps} / $goal reps (${status(m.pullUpsMet)})",
+                                fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = HydraColors.Navy)
+                            if (dayView.pullUpSets.isEmpty()) {
+                                Text("No pull-up sets", fontSize = 12.sp, color = HydraColors.Muted)
+                            }
+                        }
+                        items(dayView.pullUpSets, key = { "pullup_${it.id}" }) {
+                            HistoryEntryRow("+${it.reps} reps", it.createdAtEpochMs)
+                        }
+                    }
+                    item {
+                        Spacer(Modifier.height(4.dp))
+                        if (dayView.snapshot.creatineRequired) {
+                            Text(
+                                text = "Creatine: ${if (dayView.snapshot.creatineDone) "Done ✓" else if (m.day == today) "Not yet" else "Missed ✗"}",
+                                fontSize = 13.sp
+                            )
+                        }
+                        if (dayView.snapshot.proteinRequired) {
+                            Text(
+                                text = "Protein Shake: ${if (dayView.snapshot.proteinDone) "Done ✓" else if (m.day == today) "Not yet" else "Missed ✗"}",
+                                fontSize = 13.sp
+                            )
+                        }
                     }
                 }
             },
@@ -348,44 +374,56 @@ private fun StatsTitleAndRange(selectedRange: String, onSelectRange: (String) ->
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun StatsTabs(selectedTab: String, onSelectTab: (String) -> Unit) {
-    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        listOf(
-            Triple("Overview", "Overview", null),
-            Triple("Water", "Water", R.drawable.ic_habit_water),
-            Triple("Push-ups", "Push-ups", R.drawable.ic_habit_pushup)
-        ).forEach { (id, label, iconRes) ->
-            val isSelected = selectedTab == id
-            val tabColor = when (id) {
-                "Water" -> HydraColors.Aqua
-                "Push-ups" -> HydraColors.Lime
-                else -> HydraColors.PrimaryTeal
-            }
-            Row(
-                modifier = Modifier
-                    .weight(1f)
-                    .heightIn(min = 48.dp)
-                    .background(if (isSelected) tabColor else Color.White, RoundedCornerShape(14.dp))
-                    .border(1.dp, if (isSelected) Color.Transparent else Color(0xFFD6E8E9), RoundedCornerShape(14.dp))
-                    .clickable { onSelectTab(id) }
-                    .semantics { selected = isSelected }
-                    .testTag("stats_tab_$id"),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                if (iconRes != null) {
-                    Image(painterResource(iconRes), contentDescription = null, modifier = Modifier.size(16.dp), contentScale = ContentScale.Fit)
-                    Spacer(Modifier.width(5.dp))
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val columns = if (maxWidth < 350.dp || LocalDensity.current.fontScale > 1.15f) 2 else 4
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            maxItemsInEachRow = columns,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            listOf(
+                Triple("Overview", "Overview", null),
+                Triple("Water", "Water", R.drawable.ic_habit_water),
+                Triple("Push-ups", "Push-ups", R.drawable.ic_habit_pushup),
+                Triple("Pull-ups", "Pull-ups", R.drawable.ic_habit_pullup)
+            ).forEach { (id, label, iconRes) ->
+                val isSelected = selectedTab == id
+                val tabColor = when (id) {
+                    "Water" -> HydraColors.Aqua
+                    "Push-ups" -> HydraColors.Lime
+                    "Pull-ups" -> HydraColors.SurfaceGold
+                    else -> HydraColors.PrimaryTeal
                 }
-                Text(label, fontSize = 12.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
-                    color = if (isSelected && id != "Push-ups") Color.White else HydraColors.Navy)
+                Row(
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = 48.dp)
+                        .background(if (isSelected) tabColor else Color.White, RoundedCornerShape(14.dp))
+                        .border(1.dp, if (isSelected) Color.Transparent else Color(0xFFD6E8E9), RoundedCornerShape(14.dp))
+                        .clickable { onSelectTab(id) }
+                        .semantics { selected = isSelected }
+                        .testTag("stats_tab_$id"),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (iconRes != null) {
+                        Image(painterResource(iconRes), contentDescription = null, modifier = Modifier.size(16.dp), contentScale = ContentScale.Fit)
+                        Spacer(Modifier.width(5.dp))
+                    }
+                    Text(label, fontSize = 12.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
+                        color = HydraColors.Navy)
+                }
             }
         }
     }
 }
 
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 private fun OverviewTabContent(
     rangeDays: List<DayView>,
     today: LocalDate,
@@ -401,12 +439,12 @@ private fun OverviewTabContent(
     val completion = ProgressMath.completionPercent(metrics, today)?.let { "$it%" } ?: "—"
     val perfectDaysCount = eligibleMetrics.count { it.perfect }
 
-    Row(
-        modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min).testTag("stats_overview_kpis"),
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
+    BoxWithConstraints(Modifier.fillMaxWidth().testTag("stats_overview_kpis")) {
+    val columns = if (maxWidth < 350.dp || LocalDensity.current.fontScale > 1.15f) 2 else 4
+    FlowRow(Modifier.fillMaxWidth(), maxItemsInEachRow = columns,
+        horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         KpiCard(
-            modifier = Modifier.weight(1f).fillMaxHeight(),
+            modifier = Modifier.weight(1f),
             icon = Icons.Default.LocalFireDepartment,
             number = "$streak",
             label = "Day Streak",
@@ -414,7 +452,7 @@ private fun OverviewTabContent(
             accentColor = HydraColors.PerfectDayOrange
         )
         KpiCard(
-            modifier = Modifier.weight(1f).fillMaxHeight(),
+            modifier = Modifier.weight(1f),
             icon = Icons.Default.EmojiEvents,
             number = "$bestStreak",
             label = "Best Streak",
@@ -422,7 +460,7 @@ private fun OverviewTabContent(
             accentColor = HydraColors.PushupLime
         )
         KpiCard(
-            modifier = Modifier.weight(1f).fillMaxHeight(),
+            modifier = Modifier.weight(1f),
             icon = Icons.Default.TrackChanges,
             number = completion,
             label = "Goal Completion",
@@ -430,7 +468,7 @@ private fun OverviewTabContent(
             accentColor = HydraColors.PrimaryTeal
         )
         KpiCard(
-            modifier = Modifier.weight(1f).fillMaxHeight(),
+            modifier = Modifier.weight(1f),
             icon = Icons.Default.CalendarToday,
             number = "$perfectDaysCount",
             label = "Perfect Days",
@@ -439,6 +477,10 @@ private fun OverviewTabContent(
         )
     }
 
+    }
+
+    Text("Complete any daily goal to keep your streak going.", fontSize = 11.sp, color = HydraColors.Muted,
+        modifier = Modifier.padding(top = 8.dp))
     Spacer(modifier = Modifier.height(14.dp))
     StatsTabs(selectedTab = "Overview", onSelectTab = onSelectTab)
 
@@ -451,10 +493,10 @@ private fun OverviewTabContent(
             val f = DateTimeFormatter.ofPattern("MMM d")
             "${displayWeek.first().format(f)} – ${displayWeek.last().format(f)}"
         } else ""
-        Row(
+        FlowRow(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+            verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
@@ -471,8 +513,10 @@ private fun OverviewTabContent(
                     color = HydraColors.Navy
                 )
             }
+            if (dateLabel.isNotEmpty()) {
+                Text(dateLabel, fontSize = 11.sp, color = HydraColors.Muted, textAlign = TextAlign.End)
+            }
         }
-        if (dateLabel.isNotEmpty()) Text(dateLabel, fontSize = 11.sp, color = HydraColors.Muted)
 
         Spacer(modifier = Modifier.height(16.dp))
 
@@ -546,9 +590,11 @@ private fun OverviewTabContent(
         )
         Spacer(modifier = Modifier.height(14.dp))
 
-        Row(
+        FlowRow(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(2.dp)
+            maxItemsInEachRow = 3,
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             // Water
             val waterPct = ProgressMath.completionPercent(metrics, today, "Water")
@@ -568,6 +614,14 @@ private fun OverviewTabContent(
                 iconRes = R.drawable.ic_habit_pushup,
                 percent = pushPct,
                 color = HydraColors.Lime
+            )
+
+            HabitRingIndicator(
+                modifier = Modifier.weight(1f),
+                label = "Pull-ups",
+                iconRes = R.drawable.ic_habit_pullup,
+                percent = ProgressMath.completionPercent(metrics, today, "Pull-ups"),
+                color = HydraColors.PullUpGold
             )
 
             // Creatine
@@ -673,39 +727,61 @@ private fun OverviewTabContent(
 }
 
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 private fun HabitDrilldownTabContent(
-    isWater: Boolean,
+    habitName: String,
     rangeDays: List<DayView>,
     allDays: List<DayView>,
     today: LocalDate,
     selectedRange: String,
     onOpenCalendar: () -> Unit
 ) {
-    val habitName = if (isWater) "Water" else "Push-ups"
+    val isWater = habitName == "Water"
+    val isPullUp = habitName == "Pull-ups"
     val unit = if (isWater) "ml" else "reps"
-    val themeColor = if (isWater) HydraColors.Aqua else HydraColors.Lime
+    val (icon, themeColor, surface) = when (habitName) {
+        "Water" -> Triple(R.drawable.ic_habit_water, HydraColors.Aqua, HydraColors.SurfaceAqua)
+        "Pull-ups" -> Triple(R.drawable.ic_habit_pullup, HydraColors.PullUpGold, HydraColors.SurfaceGold)
+        else -> Triple(R.drawable.ic_habit_pushup, HydraColors.Lime, HydraColors.SurfaceLime)
+    }
+    val defaultGoal = when (habitName) {
+        "Water" -> 2500
+        "Pull-ups" -> DEFAULT_PULL_UP_GOAL
+        else -> 100
+    }
+    fun total(day: DayView): Int = when (habitName) {
+        "Water" -> day.totalWater
+        "Pull-ups" -> day.totalPullUps
+        else -> day.totalReps
+    }
     val chartStart = when (selectedRange) {
         "7D" -> today.minusDays(6)
         "30D" -> today.minusDays(29)
         "90D" -> today.minusDays(89)
         else -> allDays.minOfOrNull { LocalDate.parse(it.snapshot.day) } ?: today.minusDays(6)
     }
-    val chartHistory = remember(allDays, chartStart, today, isWater) {
-        val byDate = allDays.associateBy { it.snapshot.day }
-        (0L..java.time.temporal.ChronoUnit.DAYS.between(chartStart, today).coerceAtLeast(0)).map { offset ->
-            val date = chartStart.plusDays(offset)
-            val day = byDate[date.toString()]
-            val goal = day?.let { if (isWater) it.snapshot.waterGoalMl else it.snapshot.pushUpGoalReps }
-                ?: byDate[date.minusDays(1).toString()]?.let { if (isWater) it.snapshot.waterGoalMl else it.snapshot.pushUpGoalReps }
-                ?: allDays.firstOrNull()?.let { if (isWater) it.snapshot.waterGoalMl else it.snapshot.pushUpGoalReps }
-                ?: if (isWater) 2500 else 100
-            Triple(date, day?.let { if (isWater) it.totalWater else it.totalReps } ?: 0, goal)
+    val chartHistory = remember(allDays, chartStart, today, habitName) {
+        val points = allDays.mapNotNull { day ->
+            val goal = when (habitName) {
+                "Water" -> day.snapshot.waterGoalMl
+                "Pull-ups" -> day.snapshot.pullUpGoalReps
+                else -> day.snapshot.pushUpGoalReps
+            } ?: return@mapNotNull null
+            Triple(LocalDate.parse(day.snapshot.day), total(day), goal)
+        }
+        if (isPullUp && points.isEmpty()) emptyList()
+        else {
+            val start = if (isPullUp) maxOf(chartStart, points.minOf { it.first }) else chartStart
+            expandChartHistory(points, start, today, defaultGoal)
         }
     }
-    val values = chartHistory.map { it.second }
-    val goals = chartHistory.map { it.third }
-    val latestGoal = goals.lastOrNull() ?: if (isWater) 2500 else 100
-    val unitStep = if (isWater) 500 else 10
+    val (aggregationDays, displayHistory) = remember(chartHistory, selectedRange) {
+        if (selectedRange == "All") aggregateChartHistory(chartHistory) else 1 to chartHistory
+    }
+    val values = displayHistory.map { it.second }
+    val goals = displayHistory.map { it.third }
+    val latestGoal = goals.lastOrNull() ?: defaultGoal
+    val unitStep = if (isWater) 500 else if (isPullUp) 1 else 10
     val observedMax = maxOf(values.maxOrNull() ?: 0, goals.maxOrNull() ?: 0, unitStep)
     val tickStep = ceil(observedMax * 1.12 / 4 / unitStep).toInt().coerceAtLeast(1) * unitStep
     val scaleMax = tickStep * 4
@@ -714,39 +790,74 @@ private fun HabitDrilldownTabContent(
     val rangeMetrics = remember(rangeDays) { rangeDays.map { it.metrics } }
     val eligibleDays = remember(rangeMetrics, today, habitName) { ProgressMath.eligibleHistory(rangeMetrics, today, habitName) }
     val eligibleDates = remember(eligibleDays) { eligibleDays.mapTo(hashSetOf()) { it.day.toString() } }
-    val totalValues = rangeDays.filter { it.snapshot.day in eligibleDates }.map { if (isWater) it.totalWater else it.totalReps }
+    val totalValues = rangeDays.filter { it.snapshot.day in eligibleDates }.map(::total)
     val avg = if (totalValues.isNotEmpty()) totalValues.average().toInt() else 0
-    val recordDay = rangeDays.maxByOrNull { if (isWater) it.totalWater else it.totalReps }
-    val recordAmount = if (recordDay == null) 0 else if (isWater) recordDay.totalWater else recordDay.totalReps
+    val recordDay = rangeDays
+        .filter { it.snapshot.day in eligibleDates }
+        .maxByOrNull(::total)
+    val recordAmount = recordDay?.let(::total)
 
-    val goalDaysHit = eligibleDays.count { if (isWater) it.waterMet else it.pushUpsMet }
+    val goalDaysHit = eligibleDays.count {
+        when (habitName) {
+            "Water" -> it.waterMet
+            "Pull-ups" -> it.pullUpsMet
+            else -> it.pushUpsMet
+        }
+    }
     val totalEligible = eligibleDays.size
 
-    val hitStreak = remember(allDays, isWater, today) {
+    val hitStreak = remember(allDays, habitName, today) {
         ProgressMath.currentHabitStreak(allDays.map { it.metrics }, today, habitName)
     }
 
-    val bestWeek = remember(allDays, isWater, today) {
+    val bestWeek = remember(allDays, habitName, today) {
         ProgressMath.bestFullWeek(ProgressMath.eligibleHistory(allDays.map { it.metrics }, today, habitName), habitName)
     }
 
-    // 3 Top KPI Cards
-    Row(
-        modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min).testTag("stats_drilldown_kpis"),
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
+    SectionCard(modifier = Modifier.fillMaxWidth().testTag("stats_drilldown_analysis")) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Image(
+                    painter = painterResource(icon),
+                    contentDescription = null,
+                    modifier = Modifier.size(24.dp),
+                    contentScale = ContentScale.Fit
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(habitName, fontSize = 19.sp, fontWeight = FontWeight.Bold, color = HydraColors.Navy)
+            }
+            Text(
+                text = if (chartHistory.isEmpty()) "No history" else {
+                    val format = DateTimeFormatter.ofPattern(if (selectedRange == "All") "MMM d, yyyy" else "MMM d")
+                    "${chartHistory.first().first.format(format)} – ${chartHistory.last().first.format(format)}"
+                },
+                fontSize = 11.sp,
+                color = HydraColors.Muted,
+                textAlign = TextAlign.End
+            )
+        }
+
+        Spacer(Modifier.height(12.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min).testTag("stats_drilldown_kpis"),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
         KpiCard(
             modifier = Modifier.weight(1f).fillMaxHeight(),
-            iconRes = if (isWater) R.drawable.ic_habit_water else R.drawable.ic_habit_pushup,
+            iconRes = icon,
             number = if (eligibleDays.isEmpty()) "—" else "$avg $unit",
             label = "Daily Average",
-            bgColor = if (isWater) HydraColors.SurfaceAqua else HydraColors.SurfaceLime,
+            bgColor = surface,
             accentColor = themeColor
         )
         KpiCard(
             modifier = Modifier.weight(1f).fillMaxHeight(),
             icon = Icons.Default.EmojiEvents,
-            number = "$recordAmount $unit",
+            number = recordAmount?.let { "$it $unit" } ?: "—",
             label = "Best Day",
             bgColor = Color(0xFFFFF9E8),
             accentColor = Color(0xFFE5A110)
@@ -759,12 +870,11 @@ private fun HabitDrilldownTabContent(
             bgColor = Color.White,
             accentColor = HydraColors.Navy
         )
-    }
+        }
 
-    Spacer(modifier = Modifier.height(14.dp))
+        Spacer(modifier = Modifier.height(16.dp))
 
-    // Chart Card with historical goal references and a readable value axis.
-    SectionCard(modifier = Modifier.fillMaxWidth()) {
+        // Chart with historical goal references and a readable value axis.
         Column(modifier = Modifier.fillMaxWidth()) {
             Text(
                 text = if (isWater) "Daily Intake" else "Daily Reps",
@@ -772,20 +882,24 @@ private fun HabitDrilldownTabContent(
                 fontSize = 15.sp,
                 color = HydraColors.Navy
             )
-            Text("Tracked period ($selectedRange)", fontSize = 11.sp, color = HydraColors.Muted)
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier.size(8.dp).background(themeColor, CircleShape)
-                )
-                Spacer(modifier = Modifier.width(4.dp))
-                Text(if (isWater) "Intake" else "Reps", fontSize = 11.sp, color = HydraColors.Navy)
+                    Box(modifier = Modifier.size(8.dp).background(themeColor, CircleShape))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(if (isWater) "Intake" else "Reps", fontSize = 11.sp, color = HydraColors.Navy)
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("---", color = Color(0xFF328C86), fontSize = 11.sp)
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("Goal ($latestGoal $unit)", fontSize = 11.sp, color = HydraColors.Muted)
+                    Text("${if (aggregationDays > 1) "Goal avg" else "Goal"} ($latestGoal $unit)", fontSize = 11.sp, color = HydraColors.Muted)
                 }
+            }
+            if (aggregationDays > 1) {
+                Text("Average per ${aggregationDays}-day period · goal averages shown", fontSize = 10.sp, color = HydraColors.Muted)
             }
         }
 
@@ -793,11 +907,12 @@ private fun HabitDrilldownTabContent(
         chartStateHolder.SaveableStateProvider("$habitName:$selectedRange") {
             val scrollState = rememberScrollState()
             var initialChartPositionSet by rememberSaveable { mutableStateOf(false) }
-            val slotWidth = 36.dp
-            val chartWidth = slotWidth * maxOf(7, chartHistory.size)
+            BoxWithConstraints(Modifier.fillMaxWidth()) {
+            val slotWidth = if (displayHistory.size <= 7) (maxWidth - 40.dp) / 7 else 36.dp
+            val chartWidth = slotWidth * maxOf(7, displayHistory.size)
             LaunchedEffect(chartWidth, selectedRange, allDays.size) {
                 if (!initialChartPositionSet && allDays.isNotEmpty()) {
-                    snapshotFlow { scrollState.maxValue }.first { it > 0 || chartHistory.size <= 7 }
+                    snapshotFlow { scrollState.maxValue }.first { it > 0 || displayHistory.size <= 7 }
                     if (scrollState.maxValue > 0) scrollState.scrollTo(scrollState.maxValue)
                     initialChartPositionSet = true
                 }
@@ -829,7 +944,7 @@ private fun HabitDrilldownTabContent(
                             val y = bottom - bottom * tick / 4f
                             drawLine(Color(0xFFE5EEEE), Offset(0f, y), Offset(size.width, y), 1.dp.toPx())
                         }
-                        chartHistory.forEachIndexed { index, day ->
+                        displayHistory.forEachIndexed { index, day ->
                             val x = index * slot + (slot - barWidth) / 2f
                             val amount = day.second
                             val barHeight = amount.toFloat().coerceAtLeast(0f) / scaleMax * bottom
@@ -851,10 +966,17 @@ private fun HabitDrilldownTabContent(
                             )
                         }
                     }
-                    Row(Modifier.width(chartWidth).heightIn(min = 40.dp), verticalAlignment = Alignment.CenterVertically) {
-                        chartHistory.forEachIndexed { index, day ->
+                    Row(
+                        Modifier.width(chartWidth).heightIn(min = 40.dp)
+                            .semantics { contentDescription = "${displayHistory.size} chart buckets" }
+                            .testTag("stats_drilldown_chart_labels"),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        displayHistory.forEachIndexed { index, day ->
                             val date = day.first
-                            val label = when (selectedRange) {
+                            val label = if (aggregationDays > 1) {
+                                if (index == 0 || date.month != displayHistory[index - 1].first.month) date.format(DateTimeFormatter.ofPattern("MMM yy")) else ""
+                            } else when (selectedRange) {
                                 "7D" -> date.dayOfWeek.name.take(3).lowercase().replaceFirstChar { it.uppercase() }
                                 "30D" -> if (index % 5 == 0 || index == chartHistory.lastIndex) date.format(DateTimeFormatter.ofPattern("M/d")) else ""
                                 "90D" -> if (date.dayOfMonth == 1 || date.dayOfWeek.value == 1) date.format(DateTimeFormatter.ofPattern("d MMM")) else ""
@@ -868,6 +990,8 @@ private fun HabitDrilldownTabContent(
                 }
             }
         }
+    }
+
     }
 
     Spacer(modifier = Modifier.height(14.dp))
@@ -925,7 +1049,7 @@ private fun HabitDrilldownTabContent(
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(22.dp),
-        colors = CardDefaults.cardColors(containerColor = if (isWater) HydraColors.SurfaceAqua else HydraColors.SurfaceLime),
+        colors = CardDefaults.cardColors(containerColor = surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
         Row(
@@ -946,13 +1070,13 @@ private fun HabitDrilldownTabContent(
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "$habitName Best in selected range",
+                    text = if (recordDay == null) "$habitName Record" else "$habitName Best in selected range",
                     fontWeight = FontWeight.Bold,
                     fontSize = 15.sp,
                     color = HydraColors.Navy
                 )
                 Text(
-                    text = "Most in a day: $recordAmount $unit",
+                    text = recordAmount?.let { "Most in a day: $it $unit" } ?: "Not enough history yet",
                     fontSize = 13.sp,
                     color = HydraColors.Navy,
                     fontWeight = FontWeight.SemiBold
@@ -987,6 +1111,35 @@ private fun HabitDrilldownTabContent(
             fontWeight = FontWeight.Bold,
             fontSize = 13.sp
         )
+    }
+}
+
+internal fun expandChartHistory(
+    history: List<Triple<LocalDate, Int, Int>>,
+    start: LocalDate,
+    end: LocalDate,
+    fallbackGoal: Int
+): List<Triple<LocalDate, Int, Int>> {
+    if (end.isBefore(start)) return emptyList()
+    val sorted = history.sortedBy { it.first }
+    val byDate = sorted.associateBy { it.first }
+    var goal = sorted.lastOrNull { it.first.isBefore(start) }?.third ?: sorted.firstOrNull()?.third ?: fallbackGoal
+    return (0L..java.time.temporal.ChronoUnit.DAYS.between(start, end)).map { offset ->
+        val date = start.plusDays(offset)
+        val day = byDate[date]
+        if (day != null) goal = day.third
+        Triple(date, day?.second ?: 0, goal)
+    }
+}
+
+internal fun aggregateChartHistory(
+    history: List<Triple<LocalDate, Int, Int>>,
+    maxBuckets: Int = 90
+): Pair<Int, List<Triple<LocalDate, Int, Int>>> {
+    val bucketDays = ceil(history.size / maxBuckets.toDouble()).toInt().coerceAtLeast(1)
+    if (bucketDays == 1) return bucketDays to history
+    return bucketDays to history.chunked(bucketDays).map { bucket ->
+        Triple(bucket.first().first, bucket.map { it.second }.average().toInt(), bucket.map { it.third }.average().toInt())
     }
 }
 
@@ -1026,7 +1179,8 @@ private fun KpiCard(
                 fontSize = 15.sp,
                 fontWeight = FontWeight.ExtraBold,
                 color = HydraColors.Navy,
-                maxLines = 1,
+                maxLines = 2,
+                softWrap = true,
                 textAlign = TextAlign.Center
             )
             Spacer(modifier = Modifier.height(2.dp))
@@ -1097,6 +1251,7 @@ private fun HabitRingIndicator(
 }
 
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 private fun CalendarHistoryView(
     allDays: List<DayView>,
     today: LocalDate,
@@ -1131,7 +1286,7 @@ private fun CalendarHistoryView(
         Spacer(modifier = Modifier.height(4.dp))
 
         // Month Selector Bar
-        SectionCard(modifier = Modifier.fillMaxWidth()) {
+        SectionCard(modifier = Modifier.fillMaxWidth().testTag("calendar_month_card")) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -1218,7 +1373,11 @@ private fun CalendarHistoryView(
             }
 
             Spacer(Modifier.height(10.dp))
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally), verticalAlignment = Alignment.CenterVertically) {
+            FlowRow(
+                modifier = Modifier.fillMaxWidth().testTag("calendar_legend"),
+                horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
                 CalendarLegend(Color(0xFFD6F5D2), "Complete")
                 CalendarLegend(Color(0xFFE0F6F5), "Partial / today")
                 CalendarLegend(Color(0xFFF7E6E1), "Incomplete")
@@ -1233,6 +1392,6 @@ private fun CalendarLegend(color: Color, label: String) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.size(8.dp).background(color, CircleShape))
         Spacer(Modifier.width(3.dp))
-        Text(label, fontSize = 8.sp, color = HydraColors.Muted, maxLines = 1)
+        Text(label, fontSize = 10.sp, color = HydraColors.Muted, maxLines = 1)
     }
 }

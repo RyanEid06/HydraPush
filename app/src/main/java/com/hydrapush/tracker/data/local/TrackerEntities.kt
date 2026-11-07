@@ -1,5 +1,6 @@
 package com.hydrapush.tracker.data.local
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -14,7 +15,10 @@ data class DailySnapshotEntity(
     val creatineDone: Boolean = false,
     val proteinDone: Boolean = false,
     val requirementsRevisionId: Long? = null,
-    val createdAtEpochMs: Long = System.currentTimeMillis()
+    val createdAtEpochMs: Long = System.currentTimeMillis(),
+    val pullUpGoalReps: Int? = null,
+    @ColumnInfo(defaultValue = "0")
+    val pullUpsRequired: Boolean = pullUpGoalReps != null // Keep the original rules on a day already in progress.
 )
 
 @Entity(tableName = "water_entries", indices = [Index("day")])
@@ -41,7 +45,16 @@ data class ConfigurationRevisionEntity(
     val pushUpGoalReps: Int,
     val creatineRequired: Boolean,
     val proteinRequired: Boolean,
-    val recordedAtEpochMs: Long = System.currentTimeMillis()
+    val recordedAtEpochMs: Long = System.currentTimeMillis(),
+    val pullUpGoalReps: Int? = null
+)
+
+@Entity(tableName = "pull_up_sets", indices = [Index("day")])
+data class PullUpSetEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val day: String,
+    val reps: Int,
+    val createdAtEpochMs: Long = System.currentTimeMillis()
 )
 
 @Entity(tableName = "achievements")

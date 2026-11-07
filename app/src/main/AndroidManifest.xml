@@ -41,10 +41,6 @@
             android:exported="false">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-                <action android:name="com.hydrapush.tracker.ACTION_LOG_WATER_QUICK" />
-                <action android:name="com.hydrapush.tracker.ACTION_LOG_PUSHUP_QUICK" />
-                <action android:name="com.hydrapush.tracker.ACTION_TOGGLE_CREATINE" />
-                <action android:name="com.hydrapush.tracker.ACTION_TOGGLE_PROTEIN" />
                 <action android:name="com.hydrapush.tracker.ACTION_REFRESH_WIDGET_MIDNIGHT" />
                 <action android:name="android.intent.action.DATE_CHANGED" />
                 <action android:name="android.intent.action.TIME_SET" />
