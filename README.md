@@ -20,7 +20,7 @@ If you're switching from a private review build, export a backup before uninstal
 Open the project in Android Studio with JDK 17 and Android SDK 36.1. HydraPush uses Kotlin, Jetpack Compose, Room, and DataStore.
 
 ```sh
-./gradlew testDebugUnitTest lintDebug assembleDebug lintRelease assembleRelease
+sh ./gradlew testDebugUnitTest lintDebug assembleDebug lintRelease assembleRelease
 ```
 
 On Windows, use `gradlew.bat` with the same tasks. Debug APKs are written to `app/build/outputs/apk/debug/`. Local release builds are unsigned by default.
