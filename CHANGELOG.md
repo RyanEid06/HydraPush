@@ -7,7 +7,7 @@
 - Review streaks, achievements, goal completion, historical statistics, and calendar records.
 - Configure reminders with Android notification-permission handling.
 - Export and import validated local backups.
-- Use the summary-only home-screen widget for streak and water/push-up progress; tapping opens HydraPush.
+- See your streak and all three habits side by side in the home-screen widget. Tap it to open HydraPush.
 - Keep the app offline-first with no `INTERNET` permission or network services.
 - Preserve history when goals or optional-habit requirements change. Today’s correction and Undo affect only today’s entries.
 

@@ -15,6 +15,7 @@ import android.graphics.Color
 import android.widget.RemoteViews
 import com.hydrapush.tracker.MainActivity
 import com.hydrapush.tracker.R
+import com.hydrapush.tracker.data.preferences.DEFAULT_PULL_UP_GOAL
 import com.hydrapush.tracker.data.repository.DayView
 import com.hydrapush.tracker.data.repository.TrackerRepository
 import com.hydrapush.tracker.domain.ProgressMath
@@ -39,6 +40,7 @@ data class WidgetProgress(val total: Int, val goal: Int, val percent: Long) {
 data class WidgetState(
     val water: WidgetProgress,
     val pushUps: WidgetProgress,
+    val pullUps: WidgetProgress,
     val streak: Int
 ) {
     companion object {
@@ -49,6 +51,7 @@ data class WidgetState(
             return WidgetState(
                 water = WidgetProgress.from(todayView?.totalWater ?: 0, snapshot?.waterGoalMl ?: 2500),
                 pushUps = WidgetProgress.from(todayView?.totalReps ?: 0, snapshot?.pushUpGoalReps ?: 100),
+                pullUps = WidgetProgress.from(todayView?.totalPullUps ?: 0, snapshot?.pullUpGoalReps ?: DEFAULT_PULL_UP_GOAL),
                 streak = streak
             )
         }
@@ -152,14 +155,19 @@ class HydraPushAppWidgetProvider : AppWidgetProvider() {
             views.setTextViewText(R.id.widget_pushup_total, "${state.pushUps.total} / ${state.pushUps.goal} reps")
             views.setProgressBar(R.id.widget_pushup_progress, 100, state.pushUps.percent.coerceIn(0, 100).toInt(), false)
             views.setTextViewText(R.id.widget_pushup_percent, "${state.pushUps.percent}%")
+            views.setTextViewText(R.id.widget_pullup_total, "${state.pullUps.total} / ${state.pullUps.goal} reps")
+            views.setProgressBar(R.id.widget_pullup_progress, 100, state.pullUps.percent.coerceIn(0, 100).toInt(), false)
+            views.setTextViewText(R.id.widget_pullup_percent, "${state.pullUps.percent}%")
 
             views.setOnClickPendingIntent(R.id.widget_root, pendingIntent(context, 10))
             views.setContentDescription(R.id.widget_header, "Open HydraPush")
             views.setContentDescription(R.id.widget_water_card, "Water progress: ${state.water.total} of ${state.water.goal} milliliters, ${state.water.percent} percent. Tap to open HydraPush.")
             views.setContentDescription(R.id.widget_pushup_card, "Push-ups progress: ${state.pushUps.total} of ${state.pushUps.goal} reps, ${state.pushUps.percent} percent. Tap to open HydraPush.")
+            views.setContentDescription(R.id.widget_pullup_card, "Pull-ups progress: ${state.pullUps.total} of ${state.pullUps.goal} reps, ${state.pullUps.percent} percent. Tap to open HydraPush.")
             views.setOnClickPendingIntent(R.id.widget_header, pendingIntent(context, 10))
             views.setOnClickPendingIntent(R.id.widget_water_card, pendingIntent(context, 10))
             views.setOnClickPendingIntent(R.id.widget_pushup_card, pendingIntent(context, 10))
+            views.setOnClickPendingIntent(R.id.widget_pullup_card, pendingIntent(context, 10))
             manager.updateAppWidget(widgetId, views)
         }
     }

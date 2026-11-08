@@ -9,7 +9,7 @@ Download the signed ARM64 APK from [GitHub Releases](https://github.com/RyanEid0
 - Water logging with quick amounts and custom entries, plus push-up and pull-up logging by set.
 - Independent optional supplement habits, goals, and reminders.
 - Current and historical statistics, streaks, achievements, and a read-only calendar.
-- A summary-only home-screen widget showing the streak and water/push-up progress. Tapping it opens the app.
+- A summary-only home-screen widget showing the streak and progress for water, push-ups, and pull-ups. Tapping it opens the app.
 - User-initiated local backup export/import with validation and atomic restore.
 - Timestamped dashboard histories for today's water, push-up, and pull-up entries. Remove individual entries from each history. Past records remain read-only in normal use.
 

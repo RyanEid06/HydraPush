@@ -1,6 +1,7 @@
 package com.hydrapush.tracker.widget
 
 import com.hydrapush.tracker.data.local.DailySnapshotEntity
+import com.hydrapush.tracker.data.local.PullUpSetEntity
 import com.hydrapush.tracker.data.local.PushUpSetEntity
 import com.hydrapush.tracker.data.local.WaterEntryEntity
 import com.hydrapush.tracker.data.repository.DayView
@@ -32,16 +33,19 @@ class WidgetProgressTest {
                 day = today.toString(),
                 waterGoalMl = 2500,
                 pushUpGoalReps = 100,
+                pullUpGoalReps = 12,
                 creatineRequired = true,
                 proteinRequired = true
             ),
             waters = listOf(WaterEntryEntity(day = today.toString(), amountMl = 500)),
-            sets = listOf(PushUpSetEntity(day = today.toString(), reps = 20))
+            sets = listOf(PushUpSetEntity(day = today.toString(), reps = 20)),
+            pullUpSets = listOf(PullUpSetEntity(day = today.toString(), reps = 3))
         )
 
         val state = WidgetState.from(listOf(day), today)
 
         assertEquals(WidgetProgress(500, 2500, 20), state.water)
         assertEquals(WidgetProgress(20, 100, 20), state.pushUps)
+        assertEquals(WidgetProgress(3, 12, 25), state.pullUps)
     }
 }
