@@ -76,7 +76,7 @@ fun DashboardScreen(
 
     var showTodayLogs by remember { mutableStateOf(false) }
     var showWaterHistory by remember { mutableStateOf(false) }
-    var showPullUpHistory by remember { mutableStateOf(false) }
+    var repHistory by remember { mutableStateOf<RepHabit?>(null) }
     var undoMessage by remember { mutableStateOf<Job?>(null) }
     fun showUndo(message: String, undo: suspend () -> Unit) {
         undoMessage?.cancel()
@@ -148,6 +148,7 @@ fun DashboardScreen(
                     val push: @Composable (Modifier) -> Unit = { cardModifier ->
                         RepCard(cardModifier, RepHabit.PushUp, metrics.pushUpReps, metrics.pushUpGoalReps,
                             today.sets.map { it.reps },
+                            onHistoryClick = { repHistory = RepHabit.PushUp },
                             onAddSetClick = { inputAmount = ""; dialogError = null; setDialog = RepHabit.PushUp })
                     }
                     if (stacked) Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -164,7 +165,7 @@ fun DashboardScreen(
                         reps = metrics.pullUpReps,
                         goalReps = goal,
                         sets = today.pullUpSets.map { it.reps },
-                        onHistoryClick = { showPullUpHistory = true },
+                        onHistoryClick = { repHistory = RepHabit.PullUp },
                         onAddSetClick = { inputAmount = ""; dialogError = null; setDialog = RepHabit.PullUp }
                     )
                     Spacer(Modifier.height(14.dp))
@@ -249,8 +250,10 @@ fun DashboardScreen(
             text = {
                 LazyColumn(Modifier.fillMaxWidth().heightIn(max = 360.dp).testTag("water_history_list")) {
                     if (today.waters.isEmpty()) item { Text("No water logged today.") }
-                    items(today.waters, key = { it.id }) {
-                        HistoryEntryRow("+${it.amountMl} ml", it.createdAtEpochMs)
+                    items(today.waters, key = { it.id }) { entry ->
+                        HistoryEntryRow("+${entry.amountMl} ml", entry.createdAtEpochMs, Modifier.testTag("water_history_${entry.id}")) {
+                            persist { repository.undoWater(entry.id) }
+                        }
                     }
                 }
             },
@@ -258,22 +261,33 @@ fun DashboardScreen(
         )
     }
 
-    if (showPullUpHistory && today != null) {
+    if (repHistory != null && today != null) {
+        val pullUp = repHistory == RepHabit.PullUp
         AlertDialog(
-            onDismissRequest = { showPullUpHistory = false },
-            containerColor = HydraColors.SurfaceGold,
-            title = { Text("Pull-up set history") },
+            onDismissRequest = { repHistory = null },
+            containerColor = if (pullUp) HydraColors.SurfaceGold else HydraColors.SurfaceLime,
+            title = { Text(if (pullUp) "Pull-up set history" else "Push-up set history") },
             text = {
-                LazyColumn(Modifier.fillMaxWidth().heightIn(max = 360.dp).testTag("pullup_history_list")) {
-                    if (today.pullUpSets.isEmpty()) item { Text("No pull-up sets logged today.") }
-                    items(today.pullUpSets, key = { it.id }) { set ->
-                        HistoryEntryRow("+${set.reps} reps", set.createdAtEpochMs) {
-                            persist { repository.removePullUpSet(set.id) }
+                LazyColumn(Modifier.fillMaxWidth().heightIn(max = 360.dp)
+                    .testTag(if (pullUp) "pullup_history_list" else "pushup_history_list")) {
+                    if (pullUp) {
+                        if (today.pullUpSets.isEmpty()) item { Text("No pull-up sets logged today.") }
+                        items(today.pullUpSets, key = { it.id }) { set ->
+                            HistoryEntryRow("+${set.reps} reps", set.createdAtEpochMs) {
+                                persist { repository.removePullUpSet(set.id) }
+                            }
+                        }
+                    } else {
+                        if (today.sets.isEmpty()) item { Text("No push-up sets logged today.") }
+                        items(today.sets, key = { it.id }) { set ->
+                            HistoryEntryRow("+${set.reps} reps", set.createdAtEpochMs, Modifier.testTag("pushup_history_${set.id}")) {
+                                persist { repository.removeSet(set.id) }
+                            }
                         }
                     }
                 }
             },
-            confirmButton = { TextButton(onClick = { showPullUpHistory = false }) { Text("Done") } }
+            confirmButton = { TextButton(onClick = { repHistory = null }) { Text("Done") } }
         )
     }
 
@@ -576,7 +590,7 @@ private fun RepCard(
     reps: Int,
     goalReps: Int,
     sets: List<Int>,
-    onHistoryClick: (() -> Unit)? = null,
+    onHistoryClick: () -> Unit,
     onAddSetClick: () -> Unit
 ) {
     val pullUp = habit == RepHabit.PullUp
@@ -605,15 +619,12 @@ private fun RepCard(
                 val historyShape = RoundedCornerShape(24.dp)
                 val historyPill = Modifier.fillMaxWidth()
                     .background(if (pullUp) Color(0xFFFAE8B9) else Color(0xFFE5F8D3), historyShape)
-                if (onHistoryClick == null) {
-                    Text(history, historyPill.padding(10.dp), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = HydraColors.DeepTeal)
-                } else {
-                    Row(historyPill.heightIn(min = 48.dp).testTag("pullup_history_button")
-                        .clickable(role = Role.Button, onClick = onHistoryClick).padding(10.dp),
-                        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(history, Modifier.weight(1f), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = HydraColors.DeepTeal)
-                        Icon(Icons.Default.History, "View pull-up set history", Modifier.size(20.dp), tint = HydraColors.DeepTeal)
-                    }
+                Row(historyPill.heightIn(min = 48.dp).testTag("${tag}_history_button")
+                    .clickable(role = Role.Button, onClick = onHistoryClick).padding(10.dp),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(history, Modifier.weight(1f), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = HydraColors.DeepTeal)
+                    val description = if (pullUp) "View pull-up set history" else "View push-up set history"
+                    Icon(Icons.Default.History, description, Modifier.size(20.dp), tint = HydraColors.DeepTeal)
                 }
             }
             Button(onClick = onAddSetClick, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)

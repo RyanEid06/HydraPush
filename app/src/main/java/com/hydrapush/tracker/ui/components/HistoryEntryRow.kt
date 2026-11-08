@@ -17,10 +17,15 @@ import com.hydrapush.tracker.ui.theme.HydraColors
 import java.util.Date
 
 @Composable
-internal fun HistoryEntryRow(amount: String, timestamp: Long, onRemove: (() -> Unit)? = null) {
+internal fun HistoryEntryRow(
+    amount: String,
+    timestamp: Long,
+    modifier: Modifier = Modifier,
+    onRemove: (() -> Unit)? = null
+) {
     val time = android.text.format.DateFormat.getTimeFormat(LocalContext.current).format(Date(timestamp))
     Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp),
+        modifier = modifier.fillMaxWidth().padding(vertical = 5.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {

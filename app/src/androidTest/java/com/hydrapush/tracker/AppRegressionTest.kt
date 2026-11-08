@@ -52,6 +52,39 @@ class AppRegressionTest {
     private fun waterTotal() = runBlocking { repo.days.first().first { it.snapshot.day == java.time.LocalDate.now().toString() }.totalWater }
     private fun repTotal() = runBlocking { repo.days.first().first { it.snapshot.day == java.time.LocalDate.now().toString() }.totalReps }
 
+    @Test fun dashboardHistoriesRemoveOnlyTheSelectedWaterEntryAndPushUpSet() {
+        waitFor("water_card")
+        val initialWater = waterTotal()
+        val initialReps = repTotal()
+        val (waterId, otherWaterId, setId, otherSetId) = runBlocking {
+            listOf(repo.addWater(175), repo.addWater(225), repo.addSet(7), repo.addSet(9))
+        }
+        try {
+            fun removeFromHistory(habit: String, row: String, amount: String) {
+                compose.onNodeWithTag("${habit}_history_button").performScrollTo().performClick()
+                compose.onNodeWithTag("${habit}_history_list").performScrollToNode(hasTestTag(row))
+                val inRow = hasAnyAncestor(hasTestTag(row))
+                compose.onNode(hasText(amount) and inRow).assertIsDisplayed()
+                assertNoClippedText(compose)
+                compose.onNode(hasText("Remove") and inRow).performClick()
+                compose.waitUntil(15_000) { compose.onAllNodesWithTag(row).fetchSemanticsNodes().isEmpty() }
+                compose.onNode(hasText("Done") and hasAnyAncestor(isDialog())).performClick()
+            }
+
+            removeFromHistory("water", "water_history_$waterId", "+175 ml")
+            assertTrue(waterTotal() == initialWater + 225)
+            removeFromHistory("pushup", "pushup_history_$setId", "+7 reps")
+            assertTrue(repTotal() == initialReps + 9)
+        } finally {
+            runBlocking {
+                repo.undoWater(waterId)
+                repo.undoWater(otherWaterId)
+                repo.removeSet(setId)
+                repo.removeSet(otherSetId)
+            }
+        }
+    }
+
     @Test fun pullUpSetDialogOffersPresetsAndCustomReps() {
         waitFor("pullup_card")
         val today = java.time.LocalDate.now().toString()
